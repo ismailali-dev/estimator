@@ -741,7 +741,6 @@ public function upload_setting_documents(Request $request)
 
 
 
-
 public function get_setting_documents(Request $request)
 {
     if (!auth()->check()) {
