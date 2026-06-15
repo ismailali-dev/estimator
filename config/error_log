@@ -1,0 +1,20 @@
+[14-Jun-2024 05:22:17 America/Chicago] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home4/wellnev2/ez-estimator.wellnesslife360.com/config/database.php:18
+Stack trace:
+#0 {main}
+  thrown in /home4/wellnev2/ez-estimator.wellnesslife360.com/config/database.php on line 18
+[13-Aug-2024 13:08:42 America/Chicago] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home4/wellnev2/ez-estimator.wellnesslife360.com/config/database.php:18
+Stack trace:
+#0 {main}
+  thrown in /home4/wellnev2/ez-estimator.wellnesslife360.com/config/database.php on line 18
+[28-Jan-2025 09:53:28 America/Chicago] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home4/wellnev2/ez-estimator.wellnesslife360.com/config/app.php:16
+Stack trace:
+#0 {main}
+  thrown in /home4/wellnev2/ez-estimator.wellnesslife360.com/config/app.php on line 16
+[13-Feb-2025 19:57:49 America/Chicago] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home4/wellnev2/ez-estimator.wellnesslife360.com/config/database.php:18
+Stack trace:
+#0 {main}
+  thrown in /home4/wellnev2/ez-estimator.wellnesslife360.com/config/database.php on line 18
+[31-Dec-2025 18:56:48 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/pbx2016/api.ezestimater.com/config/database.php:18
+Stack trace:
+#0 {main}
+  thrown in /home/pbx2016/api.ezestimater.com/config/database.php on line 18

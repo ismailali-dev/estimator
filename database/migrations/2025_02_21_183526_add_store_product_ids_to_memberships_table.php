@@ -1,0 +1,28 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+class AddStoreProductIdsToMembershipsTable extends Migration
+{
+    /**
+     * Run the migrations.
+     *
+     * @return void
+     */
+    public function up()
+    {
+        Schema::table('memberships', function (Blueprint $table) {
+            $table->string('app_store_product_id')->nullable()->after('id');
+            $table->string('play_store_product_id')->nullable()->after('app_store_product_id');
+        });
+    }
+
+    public function down()
+    {
+        Schema::table('memberships', function (Blueprint $table) {
+            $table->dropColumn(['app_store_product_id', 'play_store_product_id']);
+        });
+    }
+}

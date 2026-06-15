@@ -1,0 +1,70 @@
+@import "mixins";
+
+[switch-button] {
+    -webkit-appearance: none;
+    @include prefix-property(appearance, none, 'webkit' 'moz' 'ms' 'o');
+    position: relative;
+    display: block;
+    float: none;
+    width: 15px;
+    cursor: pointer;
+
+    &:before {
+        content: 'NO';
+        display: block;
+        width: 40px;
+        height: 11px;
+        background: #fdfdfd;
+        border: 1px solid #cecece;
+        @include round-corners(10px);
+        position: absolute;
+        top: 2.3px;
+        font-size: 7px;
+        text-align: right;
+        padding-right: 3px;
+        padding-left: 3px;
+        line-height: 10px;
+        color: #9c9c9c;
+        font-weight: bold;
+        letter-spacing: 0.5px;
+        @include transition();
+    }
+
+    &:after {
+        content: '';
+        display: block;
+        width: 15px;
+        height: 15px;
+        background: #000;
+        @include round-corners(100%);
+        @include shadowNormal(rgba(0, 0, 0, 0.41) 0px 0px 3px 0px);
+        z-index: 1;
+        position: relative;
+        @include transform(translateX(0px));
+        @include transition();
+    }
+
+    &:checked{
+        &:before{
+            content: 'YES';
+            color: #0168fa;
+            padding-right: 20px;
+        }
+
+        &:after {
+            background: #0168fa;
+            @include transform(translateX(25px));
+        }
+    }
+
+    &:focus,&:hover{
+        outline: 0 !important;
+    }
+
+    &:disabled{
+        &:after,&:before{
+            background: #f6f6f6;
+            color: #b5b5b5;
+        }
+    }
+}

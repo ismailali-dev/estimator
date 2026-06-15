@@ -1,0 +1,7 @@
+[12-Dec-2024 17:58:29 UTC] PHP Fatal error:  Cannot use Carbon\Carbon as Carbon because the name is already in use in /home4/wellnev2/ez-estimator.wellnesslife360.com/app/Http/Controllers/HomeController.php on line 15
+[12-Dec-2024 17:58:34 UTC] PHP Fatal error:  Cannot use Carbon\Carbon as Carbon because the name is already in use in /home4/wellnev2/ez-estimator.wellnesslife360.com/app/Http/Controllers/HomeController.php on line 15
+[12-Dec-2024 17:58:41 UTC] PHP Fatal error:  Cannot use Carbon\Carbon as Carbon because the name is already in use in /home4/wellnev2/ez-estimator.wellnesslife360.com/app/Http/Controllers/HomeController.php on line 15
+[12-Dec-2024 19:00:31 UTC] PHP Fatal error:  Trait "Carbon\Carbon\Carbon" not found in /home4/wellnev2/ez-estimator.wellnesslife360.com/app/Http/Controllers/HomeController.php on line 17
+[12-Dec-2024 19:00:31 UTC] PHP Fatal error:  Trait "Carbon\Carbon\Carbon" not found in /home4/wellnev2/ez-estimator.wellnesslife360.com/app/Http/Controllers/HomeController.php on line 17
+[12-Dec-2024 19:00:59 UTC] PHP Fatal error:  Trait "Carbon\Carbon\Carbon" not found in /home4/wellnev2/ez-estimator.wellnesslife360.com/app/Http/Controllers/HomeController.php on line 17
+[12-Dec-2024 19:00:59 UTC] PHP Fatal error:  Trait "Carbon\Carbon\Carbon" not found in /home4/wellnev2/ez-estimator.wellnesslife360.com/app/Http/Controllers/HomeController.php on line 17

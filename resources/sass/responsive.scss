@@ -1,0 +1,53 @@
+@mixin phone {
+    @media only screen and (min-resolution: 117dpi) and (max-resolution: 119dpi), only screen and (min-resolution: 131dpi) and (max-resolution: 133dpi), only screen and (min-resolution: 145dpi) and (max-resolution: 154dpi), only screen and (min-resolution: 162dpi) and (max-resolution: 164dpi), only screen and (min-resolution: 169dpi) {
+        @content
+    }
+}
+
+@include phone {
+    .bottom-panel-td > .row > div{
+        flex: 1;
+        &:nth-child(1) *{
+            float: left !important;
+            text-align: left;
+        }
+    }
+    .bottom-panel-td > .row {
+        display: flex !important;
+    }
+
+    .total-data{
+        padding-right: 15px;
+    }
+    .labeled-items-table {
+        thead {
+            display: none;
+        }
+
+        > * {
+            width: 100%;
+        }
+
+        tr {
+            display: block;
+            background: #fff !important;
+            width: 100%;
+            border: 1px solid #eaeaea;
+            border-top: 0;
+            margin-bottom: 30px;
+
+            td {
+                width: 100%;
+                display: block;
+
+                &:before {
+                    content: attr(data-label);
+                    display: inline-block;
+                    margin-right: 5px;
+                    font-weight: 600;
+                }
+            }
+        }
+    }
+}
+

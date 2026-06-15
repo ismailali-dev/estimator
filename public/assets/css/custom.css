@@ -1,0 +1,13 @@
+.panel{
+    box-shadow: 6px 2px 17px #00000017;
+    background: white;
+    padding: 25px;
+    /* border: 1px solid #eaeaea; */
+    border-radius: 5px;
+}
+.end-form{
+    display: flex;
+    align-items: flex-end;
+}
+
+/*Status*/

@@ -1,0 +1,38 @@
+// Fonts
+@import url('https://fonts.googleapis.com/css?family=Nunito');
+
+// Variables
+@import 'variables';
+
+// Bootstrap
+//@import '~bootstrap/scss/bootstrap';
+@import "responsive";
+table.simple-dt{
+    width:calc(100% - 7px) !important;
+
+}
+table[data-table="mainGrid"]{
+    width: calc(100% - 7px) !important;
+    > thead{
+        > tr{
+            >th{
+                $num:10;
+                @while $num <= 300{
+                    &[data-width="#{$num}"]{
+                        width:#{$num}#{"px"} !important;
+                    }
+                    &[data-width="#{$num}%"]{
+                        width:#{$num}#{"%"} !important;
+                    }
+                    $num: $num + 5;
+                }
+                &:nth-child(1){
+                    width:60px !important;
+                }
+                &:nth-last-child(1){
+                    width:60px !important;
+                }
+            }
+        }
+    }
+}

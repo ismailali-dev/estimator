@@ -1,0 +1,32 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+class ModifySettingTypesTable extends Migration
+{
+    /**
+     * Run the migrations.
+     *
+     * @return void
+     */
+    public function up()
+    {
+        Schema::table('setting_types', function (Blueprint $table) {
+            $table->unsignedBigInteger('parent_id')->nullable()->after('id'); // For subcategories
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     *
+     * @return void
+     */
+    public function down()
+    {
+        Schema::table('setting_types', function (Blueprint $table) {
+            $table->dropColumn(['parent_id']);
+        });
+    }
+}

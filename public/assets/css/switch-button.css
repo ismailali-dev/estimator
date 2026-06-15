@@ -1,0 +1,92 @@
+[switch-button] {
+  -webkit-appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  -ms-appearance: none;
+  -o-appearance: none;
+  appearance: none;
+  position: relative;
+  display: block;
+  float: none;
+  width: 15px;
+  cursor: pointer;
+}
+[switch-button]:before {
+  content: "NO";
+  display: block;
+  width: 40px;
+  height: 11px;
+  background: #fdfdfd;
+  border: 1px solid #cecece;
+  -moz-border-radius: 10px;
+  -webkit-border-radius: 10px;
+  -ms-border-radius: 10px;
+  -o-border-radius: 10px;
+  border-radius: 10px;
+  position: absolute;
+  top: 2.3px;
+  font-size: 7px;
+  text-align: right;
+  padding-right: 3px;
+  padding-left: 3px;
+  line-height: 10px;
+  color: #9c9c9c;
+  font-weight: bold;
+  letter-spacing: 0.5px;
+  -webkit-transition: all 0.3s ease-in-out;
+  -moz-transition: all 0.3s ease-in-out;
+  -ms-transition: all 0.3s ease-in-out;
+  -o-transition: all 0.3s ease-in-out;
+  transition: all 0.3s ease-in-out;
+}
+[switch-button]:after {
+  content: "";
+  display: block;
+  width: 15px;
+  height: 15px;
+  background: #000;
+  -moz-border-radius: 100%;
+  -webkit-border-radius: 100%;
+  -ms-border-radius: 100%;
+  -o-border-radius: 100%;
+  border-radius: 100%;
+  -webkit-box-shadow: rgba(0, 0, 0, 0.41) 0px 0px 3px 0px;
+  -moz-box-shadow: rgba(0, 0, 0, 0.41) 0px 0px 3px 0px;
+  -ms-box-shadow: rgba(0, 0, 0, 0.41) 0px 0px 3px 0px;
+  -o-box-shadow: rgba(0, 0, 0, 0.41) 0px 0px 3px 0px;
+  box-shadow: rgba(0, 0, 0, 0.41) 0px 0px 3px 0px;
+  z-index: 1;
+  position: relative;
+  transform: translateX(0px);
+  -webkit-transform: translateX(0px);
+  -moz-transform: translateX(0px);
+  -ms-transform: translateX(0px);
+  -o-transform: translateX(0px);
+  -webkit-transition: all 0.3s ease-in-out;
+  -moz-transition: all 0.3s ease-in-out;
+  -ms-transition: all 0.3s ease-in-out;
+  -o-transition: all 0.3s ease-in-out;
+  transition: all 0.3s ease-in-out;
+}
+[switch-button]:checked:before {
+  content: "YES";
+  color: #0168fa;
+  padding-right: 20px;
+}
+[switch-button]:checked:after {
+  background: #0168fa;
+  transform: translateX(25px);
+  -webkit-transform: translateX(25px);
+  -moz-transform: translateX(25px);
+  -ms-transform: translateX(25px);
+  -o-transform: translateX(25px);
+}
+[switch-button]:focus, [switch-button]:hover {
+  outline: 0 !important;
+}
+[switch-button]:disabled:after, [switch-button]:disabled:before {
+  background: #f6f6f6;
+  color: #b5b5b5;
+}
+
+/*# sourceMappingURL=switch-button.css.map */
