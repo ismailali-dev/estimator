@@ -759,7 +759,6 @@ public function get_setting_documents(Request $request)
     ->get();
 
     $response = [];
-
     
     foreach ($documents as $doc) {
         $response[] = [
