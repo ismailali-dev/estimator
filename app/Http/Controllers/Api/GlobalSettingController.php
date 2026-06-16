@@ -781,22 +781,6 @@ public function get_setting_documents(Request $request)
 
 public function preview_setting_document(SettingDocument $document)
 {
-    if (!auth()->check()) {
-        return response()->json([
-            'status' => false,
-            'message' => 'Unauthenticated'
-        ], 401);
-    }
-
-    $user = auth()->user();
-
-    if ($document->user_id !== $user->id || $document->company_id !== $user->company_id) {
-        return response()->json([
-            'status' => false,
-            'message' => 'Document not found'
-        ], 404);
-    }
-
     $absolutePath = $this->resolveDocumentAbsolutePath($document);
 
     if (!$absolutePath) {

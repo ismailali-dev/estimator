@@ -146,6 +146,7 @@ Route::prefix('/forgot-password')->group(function(){
 });
 Route::get('/view-email', [App\Http\Controllers\Api\LoginController::class, 'emailPreview']);
 Route::get('/tc', [App\Http\Controllers\Api\EstimateController::class, 'test_report']);
+Route::get('/global-setting/upload-documents/{document}/preview', [App\Http\Controllers\Api\GlobalSettingController::class, 'preview_setting_document']);
 
 Route::prefix("/general")->group(function(){
     Route::get("/", function (Request $request){
@@ -218,7 +219,6 @@ Route::prefix("/general")->group(function(){
         
          Route::post('/upload-documents', [App\Http\Controllers\Api\GlobalSettingController::class, 'upload_setting_documents']);
          Route::get('/upload-documents', [App\Http\Controllers\Api\GlobalSettingController::class, 'get_setting_documents']);
-         Route::get('/upload-documents/{document}/preview', [App\Http\Controllers\Api\GlobalSettingController::class, 'preview_setting_document']);
          Route::delete('/upload-documents/{document}', [App\Http\Controllers\Api\GlobalSettingController::class, 'delete_setting_document']);
         //  Route::get('/merge-documents', [App\Http\Controllers\Api\GlobalSettingController::class, 'mergeDocuments']);
          Route::put('/setting-documents/update', [App\Http\Controllers\Api\GlobalSettingController::class, 'update_setting_documents']);
