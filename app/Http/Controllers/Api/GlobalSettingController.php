@@ -949,226 +949,226 @@ public function delete_setting_document(SettingDocument $document)
     ]);
 }
 
-public function mergeDocuments(Request $request)
-{
-    try {
-        $user = auth()->user();
+// public function mergeDocuments(Request $request)
+// {
+//     try {
+//         $user = auth()->user();
         
-        // Get documents ordered by ID or created_at for consistent merging
-        $documents = SettingDocument::where('user_id', $user->id)
-            ->orderBy('id', 'asc')
-            ->get();
+//         // Get documents ordered by ID or created_at for consistent merging
+//         $documents = SettingDocument::where('user_id', $user->id)
+//             ->orderBy('id', 'asc')
+//             ->get();
         
-        if ($documents->isEmpty()) {
-            return response()->json([
-                'status' => false,
-                'message' => 'No documents found to merge.'
-            ], 400);
-        }
+//         if ($documents->isEmpty()) {
+//             return response()->json([
+//                 'status' => false,
+//                 'message' => 'No documents found to merge.'
+//             ], 400);
+//         }
         
-        // Initialize FPDI
-        $pdf = new Fpdi();
-        $pdf->SetAutoPageBreak(false, 0);
+//         // Initialize FPDI
+//         $pdf = new Fpdi();
+//         $pdf->SetAutoPageBreak(false, 0);
         
-        // Create temp directory for converted files
-        $tempDir = storage_path('app/temp/merged_' . uniqid());
-        if (!file_exists($tempDir)) {
-            mkdir($tempDir, 0755, true);
-        }
+//         // Create temp directory for converted files
+//         $tempDir = storage_path('app/temp/merged_' . uniqid());
+//         if (!file_exists($tempDir)) {
+//             mkdir($tempDir, 0755, true);
+//         }
         
-        $tempFiles = []; // Track temp files for cleanup
-        $pageCount = 0; // Track total pages manually
+//         $tempFiles = []; // Track temp files for cleanup
+//         $pageCount = 0; // Track total pages manually
         
-        foreach ($documents as $doc) {
-            $filePath = $this->resolveDocumentAbsolutePath($doc);
+//         foreach ($documents as $doc) {
+//             $filePath = $this->resolveDocumentAbsolutePath($doc);
             
-            // Check if file exists
-            if (!$filePath) {
-                \Log::warning("File not found for document ID: {$doc->id}", [
-                    'file_path' => $doc->file_path,
-                ]);
-                continue;
-            }
+//             // Check if file exists
+//             if (!$filePath) {
+//                 \Log::warning("File not found for document ID: {$doc->id}", [
+//                     'file_path' => $doc->file_path,
+//                 ]);
+//                 continue;
+//             }
             
-            $fileType = strtolower($doc->file_type);
+//             $fileType = strtolower($doc->file_type);
             
-            // HANDLE PDF
-            if ($fileType == 'pdf') {
-                try {
-                    $totalPages = $pdf->setSourceFile($filePath);
-                    $pageCount += $totalPages;
+//             // HANDLE PDF
+//             if ($fileType == 'pdf') {
+//                 try {
+//                     $totalPages = $pdf->setSourceFile($filePath);
+//                     $pageCount += $totalPages;
                     
-                    for ($i = 1; $i <= $totalPages; $i++) {
-                        $template = $pdf->importPage($i);
-                        $size = $pdf->getTemplateSize($template);
+//                     for ($i = 1; $i <= $totalPages; $i++) {
+//                         $template = $pdf->importPage($i);
+//                         $size = $pdf->getTemplateSize($template);
                         
-                        // Use A4 as fallback if size is invalid
-                        if ($size['width'] <= 0 || $size['height'] <= 0) {
-                            $size = ['width' => 210, 'height' => 297, 'orientation' => 'P'];
-                        }
+//                         // Use A4 as fallback if size is invalid
+//                         if ($size['width'] <= 0 || $size['height'] <= 0) {
+//                             $size = ['width' => 210, 'height' => 297, 'orientation' => 'P'];
+//                         }
                         
-                        $pdf->AddPage($size['orientation'], [$size['width'], $size['height']]);
-                        $pdf->useTemplate($template);
-                    }
-                } catch (\Exception $e) {
-                    \Log::error("Error processing PDF {$doc->id}: " . $e->getMessage());
-                    continue;
-                }
-            }
+//                         $pdf->AddPage($size['orientation'], [$size['width'], $size['height']]);
+//                         $pdf->useTemplate($template);
+//                     }
+//                 } catch (\Exception $e) {
+//                     \Log::error("Error processing PDF {$doc->id}: " . $e->getMessage());
+//                     continue;
+//                 }
+//             }
             
-            // HANDLE IMAGES
-            elseif (in_array($fileType, ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'])) {
-                try {
-                    $imageInfo = getimagesize($filePath);
-                    if ($imageInfo === false) {
-                        \Log::warning("Invalid image file: {$filePath}");
-                        continue;
-                    }
+//             // HANDLE IMAGES
+//             elseif (in_array($fileType, ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'])) {
+//                 try {
+//                     $imageInfo = getimagesize($filePath);
+//                     if ($imageInfo === false) {
+//                         \Log::warning("Invalid image file: {$filePath}");
+//                         continue;
+//                     }
                     
-                    list($width, $height) = $imageInfo;
+//                     list($width, $height) = $imageInfo;
                     
-                    // Convert pixels to mm (DPI: 72)
-                    $widthMM = $width * 0.352777;
-                    $heightMM = $height * 0.352777;
+//                     // Convert pixels to mm (DPI: 72)
+//                     $widthMM = $width * 0.352777;
+//                     $heightMM = $height * 0.352777;
                     
-                    // Calculate orientation
-                    $orientation = ($widthMM > $heightMM) ? 'L' : 'P';
+//                     // Calculate orientation
+//                     $orientation = ($widthMM > $heightMM) ? 'L' : 'P';
                     
-                    // Scale down if image is too large (max A3 size: 420x297mm)
-                    $maxWidth = 420;
-                    $maxHeight = 297;
+//                     // Scale down if image is too large (max A3 size: 420x297mm)
+//                     $maxWidth = 420;
+//                     $maxHeight = 297;
                     
-                    if ($widthMM > $maxWidth || $heightMM > $maxHeight) {
-                        $scale = min($maxWidth / $widthMM, $maxHeight / $heightMM);
-                        $widthMM = $widthMM * $scale;
-                        $heightMM = $heightMM * $scale;
-                    }
+//                     if ($widthMM > $maxWidth || $heightMM > $maxHeight) {
+//                         $scale = min($maxWidth / $widthMM, $maxHeight / $heightMM);
+//                         $widthMM = $widthMM * $scale;
+//                         $heightMM = $heightMM * $scale;
+//                     }
                     
-                    $pdf->AddPage($orientation, [$widthMM, $heightMM]);
-                    $pdf->Image($filePath, 0, 0, $widthMM, $heightMM);
-                    $pageCount++; // Increment page count for image
+//                     $pdf->AddPage($orientation, [$widthMM, $heightMM]);
+//                     $pdf->Image($filePath, 0, 0, $widthMM, $heightMM);
+//                     $pageCount++; // Increment page count for image
                     
-                } catch (\Exception $e) {
-                    \Log::error("Error processing image {$doc->id}: " . $e->getMessage());
-                    continue;
-                }
-            }
+//                 } catch (\Exception $e) {
+//                     \Log::error("Error processing image {$doc->id}: " . $e->getMessage());
+//                     continue;
+//                 }
+//             }
             
-            // HANDLE WORD DOCUMENTS (DOC, DOCX)
-            elseif (in_array($fileType, ['doc', 'docx'])) {
-                try {
-                    // Convert Word to PDF
-                    $convertedPdfPath = $tempDir . '/' . uniqid() . '.pdf';
-                    DocumentConverter::convertWordToPdf($filePath, $convertedPdfPath);
-                    $tempFiles[] = $convertedPdfPath;
+//             // HANDLE WORD DOCUMENTS (DOC, DOCX)
+//             elseif (in_array($fileType, ['doc', 'docx'])) {
+//                 try {
+//                     // Convert Word to PDF
+//                     $convertedPdfPath = $tempDir . '/' . uniqid() . '.pdf';
+//                     DocumentConverter::convertWordToPdf($filePath, $convertedPdfPath);
+//                     $tempFiles[] = $convertedPdfPath;
                     
-                    // Add converted PDF pages to final PDF
-                    $totalPages = $pdf->setSourceFile($convertedPdfPath);
-                    $pageCount += $totalPages;
+//                     // Add converted PDF pages to final PDF
+//                     $totalPages = $pdf->setSourceFile($convertedPdfPath);
+//                     $pageCount += $totalPages;
                     
-                    for ($i = 1; $i <= $totalPages; $i++) {
-                        $template = $pdf->importPage($i);
-                        $size = $pdf->getTemplateSize($template);
+//                     for ($i = 1; $i <= $totalPages; $i++) {
+//                         $template = $pdf->importPage($i);
+//                         $size = $pdf->getTemplateSize($template);
                         
-                        if ($size['width'] <= 0 || $size['height'] <= 0) {
-                            $size = ['width' => 210, 'height' => 297, 'orientation' => 'P'];
-                        }
+//                         if ($size['width'] <= 0 || $size['height'] <= 0) {
+//                             $size = ['width' => 210, 'height' => 297, 'orientation' => 'P'];
+//                         }
                         
-                        $pdf->AddPage($size['orientation'], [$size['width'], $size['height']]);
-                        $pdf->useTemplate($template);
-                    }
+//                         $pdf->AddPage($size['orientation'], [$size['width'], $size['height']]);
+//                         $pdf->useTemplate($template);
+//                     }
                     
-                } catch (\Exception $e) {
-                    \Log::error("Error processing Word document {$doc->id}: " . $e->getMessage());
-                    continue;
-                }
-            }
+//                 } catch (\Exception $e) {
+//                     \Log::error("Error processing Word document {$doc->id}: " . $e->getMessage());
+//                     continue;
+//                 }
+//             }
             
-            // HANDLE TEXT FILES
-            elseif (in_array($fileType, ['txt', 'rtf'])) {
-                try {
-                    $content = file_get_contents($filePath);
+//             // HANDLE TEXT FILES
+//             elseif (in_array($fileType, ['txt', 'rtf'])) {
+//                 try {
+//                     $content = file_get_contents($filePath);
                     
-                    // Create a simple PDF page with text
-                    $pdf->AddPage();
-                    $pdf->SetFont('Helvetica', '', 12);
-                    $pdf->SetXY(10, 10);
+//                     // Create a simple PDF page with text
+//                     $pdf->AddPage();
+//                     $pdf->SetFont('Helvetica', '', 12);
+//                     $pdf->SetXY(10, 10);
                     
-                    // Split text into lines
-                    $lines = explode("\n", wordwrap($content, 80, "\n"));
-                    $y = 10;
-                    $linesPerPage = 0;
+//                     // Split text into lines
+//                     $lines = explode("\n", wordwrap($content, 80, "\n"));
+//                     $y = 10;
+//                     $linesPerPage = 0;
                     
-                    foreach ($lines as $line) {
-                        if ($y > 280) { // Page limit reached
-                            $pdf->AddPage();
-                            $y = 10;
-                            $linesPerPage = 0;
-                        }
-                        $pdf->Cell(0, 10, $line, 0, 1, 'L');
-                        $y += 10;
-                        $linesPerPage++;
-                    }
+//                     foreach ($lines as $line) {
+//                         if ($y > 280) { // Page limit reached
+//                             $pdf->AddPage();
+//                             $y = 10;
+//                             $linesPerPage = 0;
+//                         }
+//                         $pdf->Cell(0, 10, $line, 0, 1, 'L');
+//                         $y += 10;
+//                         $linesPerPage++;
+//                     }
                     
-                    // Calculate pages for text content (approximate)
-                    $textPages = ceil(count($lines) / 65); // ~65 lines per page
-                    $pageCount += max(1, $textPages);
+//                     // Calculate pages for text content (approximate)
+//                     $textPages = ceil(count($lines) / 65); // ~65 lines per page
+//                     $pageCount += max(1, $textPages);
                     
-                } catch (\Exception $e) {
-                    \Log::error("Error processing text file {$doc->id}: " . $e->getMessage());
-                    continue;
-                }
-            }
-        }
+//                 } catch (\Exception $e) {
+//                     \Log::error("Error processing text file {$doc->id}: " . $e->getMessage());
+//                     continue;
+//                 }
+//             }
+//         }
         
-        // Check if PDF has any pages
-        if ($pageCount === 0) {
-            // Cleanup temp files
-            $this->cleanupTempFiles($tempFiles, $tempDir);
+//         // Check if PDF has any pages
+//         if ($pageCount === 0) {
+//             // Cleanup temp files
+//             $this->cleanupTempFiles($tempFiles, $tempDir);
             
-            return response()->json([
-                'status' => false,
-                'message' => 'No valid pages were found to merge.'
-            ], 400);
-        }
+//             return response()->json([
+//                 'status' => false,
+//                 'message' => 'No valid pages were found to merge.'
+//             ], 400);
+//         }
         
-        // Generate unique filename
-        $fileName = 'merged_' . uniqid() . '_' . time() . '.pdf';
-        $storagePath = 'merged_documents/' . date('Y/m');
-        $fullPath = public_path('storage/' . $storagePath);
+//         // Generate unique filename
+//         $fileName = 'merged_' . uniqid() . '_' . time() . '.pdf';
+//         $storagePath = 'merged_documents/' . date('Y/m');
+//         $fullPath = public_path('storage/' . $storagePath);
         
-        // Create directory if it doesn't exist
-        if (!file_exists($fullPath)) {
-            mkdir($fullPath, 0755, true);
-        }
+//         // Create directory if it doesn't exist
+//         if (!file_exists($fullPath)) {
+//             mkdir($fullPath, 0755, true);
+//         }
         
-        $outputPath = $fullPath . '/' . $fileName;
-        $pdf->Output($outputPath, 'F');
+//         $outputPath = $fullPath . '/' . $fileName;
+//         $pdf->Output($outputPath, 'F');
         
-        // Cleanup temp files
-        $this->cleanupTempFiles($tempFiles, $tempDir);
+//         // Cleanup temp files
+//         $this->cleanupTempFiles($tempFiles, $tempDir);
         
-        return response()->json([
-            'status' => true,
-            'message' => 'Documents merged successfully',
-            'file_url' => $request->getSchemeAndHttpHost() . '/storage/' . $storagePath . '/' . $fileName,
-            'page_count' => $pageCount,
-            'document_count' => $documents->count(),
-            // 'supported_types' => ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'doc', 'docx', 'txt', 'rtf']
-        ]);
+//         return response()->json([
+//             'status' => true,
+//             'message' => 'Documents merged successfully',
+//             'file_url' => $request->getSchemeAndHttpHost() . '/storage/' . $storagePath . '/' . $fileName,
+//             'page_count' => $pageCount,
+//             'document_count' => $documents->count(),
+//             // 'supported_types' => ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'doc', 'docx', 'txt', 'rtf']
+//         ]);
         
-    } catch (\Exception $e) {
-        \Log::error('Merge documents error: ' . $e->getMessage(), [
-            'user_id' => auth()->id(),
-            'trace' => $e->getTraceAsString()
-        ]);
+//     } catch (\Exception $e) {
+//         \Log::error('Merge documents error: ' . $e->getMessage(), [
+//             'user_id' => auth()->id(),
+//             'trace' => $e->getTraceAsString()
+//         ]);
         
-        return response()->json([
-            'status' => false,
-            'message' => 'Failed to merge documents: ' . $e->getMessage()
-        ], 500);
-    }
-}
+//         return response()->json([
+//             'status' => false,
+//             'message' => 'Failed to merge documents: ' . $e->getMessage()
+//         ], 500);
+//     }
+// }
 
 /**
  * Cleanup temporary files

@@ -220,7 +220,7 @@ Route::prefix("/general")->group(function(){
          Route::get('/upload-documents', [App\Http\Controllers\Api\GlobalSettingController::class, 'get_setting_documents']);
          Route::get('/upload-documents/{document}/preview', [App\Http\Controllers\Api\GlobalSettingController::class, 'preview_setting_document']);
          Route::delete('/upload-documents/{document}', [App\Http\Controllers\Api\GlobalSettingController::class, 'delete_setting_document']);
-         Route::get('/merge-documents', [App\Http\Controllers\Api\GlobalSettingController::class, 'mergeDocuments']);
+        //  Route::get('/merge-documents', [App\Http\Controllers\Api\GlobalSettingController::class, 'mergeDocuments']);
          Route::put('/setting-documents/update', [App\Http\Controllers\Api\GlobalSettingController::class, 'update_setting_documents']);
          
         Route::post('/send-documents-email', [App\Http\Controllers\Api\GlobalSettingController::class, 'sendDocumentsByEmail']);
