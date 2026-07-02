@@ -16,7 +16,9 @@ use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 use App\Notifications\FirebasePushNotification;
 use App\Services\FirebaseService;
 use Illuminate\Validation\Rule;
@@ -194,6 +196,7 @@ class UserController extends ApiBaseController
             'state_id' => 'required',
             'zip_code' => 'required',
             'job_type' => 'nullable',
+            'sign' => 'nullable',
         ]);
         if ($validator->fails()){
             foreach ($validator->errors()->all() as $msg) {
@@ -208,6 +211,25 @@ class UserController extends ApiBaseController
         $user->last_name = $request->input("last_name");
         $user->phone = $request->input("phone");
         $user->job_type = $request->input("job_type");
+        if ($request->hasFile("sign")) {
+            $signValidator = Validator::make($request->all(), [
+                'sign' => 'image|mimes:jpeg,jpg,png,webp|max:5120',
+            ]);
+            if ($signValidator->fails()) {
+                foreach ($signValidator->errors()->all() as $msg) {
+                    if (strlen(trim($msg)) > 1) {
+                        $this->response_data["message"] = $msg;
+                        return $this->sendJsonResponse();
+                    }
+                }
+            }
+
+            $sign = $request->file("sign");
+            $storedSign = $sign->storePubliclyAs("user/signatures", $sign->hashName(), "public");
+            $user->sign = "storage/" . $storedSign;
+        } elseif ($request->has("sign")) {
+            $user->sign = $this->storeSignatureDataUrl($request->input("sign")) ?? $request->input("sign");
+        }
         $user->update();
         
         $user->company()->updateOrCreate([
@@ -231,6 +253,28 @@ class UserController extends ApiBaseController
         $this->response_data["status"] = true;
         $this->response_data["message"] = "Profile update successfully.";
         return  $this->sendJsonResponse();
+    }
+
+    private function storeSignatureDataUrl($signature)
+    {
+        if (!is_string($signature) || strpos($signature, 'data:image/') !== 0) {
+            return null;
+        }
+
+        if (!preg_match('/^data:image\/(png|jpeg|jpg|webp);base64,(.+)$/i', $signature, $matches)) {
+            return null;
+        }
+
+        $extension = strtolower($matches[1]) === 'jpeg' ? 'jpg' : strtolower($matches[1]);
+        $imageData = base64_decode($matches[2], true);
+        if ($imageData === false) {
+            return null;
+        }
+
+        $path = 'user/signatures/' . Str::random(40) . '.' . $extension;
+        Storage::put($path, $imageData);
+
+        return 'storage/app/' . $path;
     }
 
     public function invoice_setting(Request $request):JsonResponse
@@ -444,7 +488,7 @@ class UserController extends ApiBaseController
     // All available module IDs
     $allModuleIds = \App\Models\ModulePermission::pluck('id')->toArray();
 
-    // User’s assigned permissions
+    // Userï¿½s assigned permissions
     $userPermissionIds = \App\Models\UserModulePermission::where('user_id', $authUser->id)
         ->pluck('module_permission_id')
         ->toArray();

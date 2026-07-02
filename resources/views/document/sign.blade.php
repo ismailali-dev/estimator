@@ -218,6 +218,8 @@
         .field-overlay.is-signature {
             cursor: pointer;
             pointer-events: auto;
+            background: rgba(255, 255, 255, 0.92);
+            padding: 0;
         }
 
         .field-overlay.is-editable {
@@ -241,6 +243,14 @@
         .field-overlay-input::placeholder {
             color: #e00000;
             opacity: 0.9;
+        }
+
+        .field-overlay-signature-img {
+            width: 100%;
+            height: 100%;
+            object-fit: fill;
+            pointer-events: none;
+            display: block;
         }
 
         .loading-card, .error-card {
@@ -432,6 +442,39 @@
             font-weight: 600;
             font-family: 'Georgia', serif;
             margin-bottom: 0.4rem;
+        }
+
+        .signature-mode-toggle {
+            display: inline-flex;
+            gap: 0.25rem;
+            padding: 0.25rem;
+            background: #f4ece3;
+            border: 1px solid #e3d4c4;
+            border-radius: 60px;
+            margin: 0.6rem 0 0.2rem;
+        }
+
+        .signature-mode-btn {
+            border: 0;
+            background: transparent;
+            color: #725f4b;
+            border-radius: 60px;
+            padding: 0.55rem 1.2rem;
+            font-weight: 700;
+            font-size: 0.78rem;
+            cursor: pointer;
+            font-family: inherit;
+            transition: all 0.2s ease;
+        }
+
+        .signature-mode-btn.is-active {
+            background: #2f2e2b;
+            color: #ffffff;
+            box-shadow: 0 6px 14px rgba(47, 46, 43, 0.18);
+        }
+
+        .signature-canvas.is-name-mode {
+            cursor: default;
         }
 
         .signature-canvas {
@@ -732,7 +775,9 @@
 
         $packetReference = strtoupper(substr(str_replace('-', '', $token), 0, 24));
         $signerBase = $recipientEmail ? explode('@', $recipientEmail)[0] : 'customer';
-        $signerName = ucwords(trim(str_replace(['.', '_', '-'], ' ', $signerBase)));
+        $signerName = preg_replace('/\d+/', '', str_replace(['.', '_', '-'], ' ', $signerBase));
+        $signerName = trim(preg_replace('/\s+/', ' ', $signerName));
+        $signerName = $signerName !== '' ? ucwords($signerName) : 'Customer';
     @endphp
 
     <div id="success-state" class="success-card hidden">
@@ -825,10 +870,20 @@
         </div>
     </div>
 
+    @if($documentsWithSignature > 0)
+        <div class="signature-instructions" style="max-width: 980px; margin: 2rem auto; text-align:center; color:#7f7264; font-size:0.85rem;">
+            <p>To complete the signing process, please ensure that you have added your signature to all required documents. Once all signatures are provided, click the "Submit Signed" button above to finalize your submission.</p>
+        </div>
+    @endif
+
     <div id="signature-modal" class="modal" aria-hidden="true">
         <div class="modal-card">
             <h3 id="modal-title">Add your signature</h3>
-            <p style="color: #7f6e5b; margin-bottom: 1rem;">Draw naturally inside the area. Clear and retry if needed.</p>
+            <p style="color: #7f6e5b; margin-bottom: 1rem;">Choose name or draw your signature.</p>
+            <div class="signature-mode-toggle" role="group" aria-label="Signature type">
+                <button type="button" class="signature-mode-btn is-active" data-signature-mode="name">Name</button>
+                <button type="button" class="signature-mode-btn" data-signature-mode="draw">Draw</button>
+            </div>
             <canvas id="signature-pad" class="signature-canvas"></canvas>
             <div class="modal-actions">
                 <button id="close-modal" type="button" class="button">Cancel</button>
@@ -845,7 +900,7 @@
                 <div class="modal-header">
                     <div class="brand">
                  <div class="">
-            <img src="{{ asset('public/assets/img/favicon.png') }}" alt="icon">
+            <img src="{{ asset('/assets/img/favicon.png') }}" alt="icon">
         </div>                      
             <span>Estimater</span>
                     </div>
@@ -863,7 +918,7 @@
                 <div class="message-body">
                     <div class="greeting">Hi,</div>
                     <div class="message-text">
-                        We have prepared and attached the Amended Service Order between Design Spartans and EZ Estimater for your signature. 
+                        We have prepared and attached the Amended Service Order between {{ $signerName }} and EZ Estimater for your signature. 
                         Please review and sign the document at your earliest convenience. <br>Thanks!
                     </div>
                     {{-- <div class="attachment-badge">
@@ -919,9 +974,13 @@
 
         const requiredDocumentIds = @json($requiredDocumentIds);
         const signatures = {};
+        const signatureModes = {};
+        const defaultSignatureCache = {};
         const fieldValues = {};
+        const defaultSignerName = @json($signerName);
         const signatureModal = document.getElementById('signature-modal');
         const signatureCanvas = document.getElementById('signature-pad');
+        const signatureModeButtons = document.querySelectorAll('[data-signature-mode]');
         const signaturePad = new SignaturePad(signatureCanvas, {
             minWidth: 1.2,
             maxWidth: 2.6,
@@ -931,12 +990,87 @@
         const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
         const submitButton = document.getElementById('submit-all');
         let activeDocumentId = null;
+        let activeSignatureMode = 'name';
 
         function formatToday() {
             const date = new Date();
             return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
         }
 
+        function buildDefaultSignatureDataUrl(name) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 900;
+            canvas.height = 150;
+            const ctx = canvas.getContext('2d');
+            const safeName = String(name || 'Customer').trim() || 'Customer';
+            let fontSize = 94;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#3a3530';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            do {
+                ctx.font = `italic ${fontSize}px "Brush Script MT", "Segoe Script", "Lucida Handwriting", cursive`;
+                fontSize -= 4;
+            } while (ctx.measureText(safeName).width > canvas.width - 60 && fontSize > 36);
+
+            ctx.fillText(safeName, canvas.width / 2, 72);
+            ctx.lineWidth = 4;
+            ctx.strokeStyle = 'rgba(58, 53, 48, 0.75)';
+            ctx.beginPath();
+            ctx.moveTo(90, 118);
+            ctx.quadraticCurveTo(450, 138, 810, 118);
+            ctx.stroke();
+
+            return canvas.toDataURL('image/png');
+        }
+
+        function defaultSignatureForDocument(documentId) {
+            const key = String(documentId || 'default');
+            if (!defaultSignatureCache[key]) {
+                defaultSignatureCache[key] = buildDefaultSignatureDataUrl(defaultSignerName);
+            }
+            return defaultSignatureCache[key];
+        }
+
+        function updateSignatureModeUi() {
+            signatureModeButtons.forEach(button => {
+                const isActive = button.dataset.signatureMode === activeSignatureMode;
+                button.classList.toggle('is-active', isActive);
+                button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+            });
+            signatureCanvas.classList.toggle('is-name-mode', activeSignatureMode === 'name');
+            signatureCanvas.style.pointerEvents = activeSignatureMode === 'name' ? 'none' : 'auto';
+        }
+
+        function paintSignatureToCanvas(dataUrl, markPad = true) {
+            const rect = signatureCanvas.getBoundingClientRect();
+            const ctx = signatureCanvas.getContext('2d');
+            ctx.clearRect(0, 0, rect.width, rect.height);
+            signaturePad.clear();
+            if (!dataUrl) return;
+            const img = new Image();
+            img.onload = () => {
+                ctx.clearRect(0, 0, rect.width, rect.height);
+                ctx.drawImage(img, 0, 0, rect.width, rect.height);
+                if (markPad) signaturePad.fromDataURL(dataUrl);
+            };
+            img.src = dataUrl;
+        }
+
+        function setSignatureMode(mode, resetDraw = false) {
+            activeSignatureMode = mode === 'draw' ? 'draw' : 'name';
+            updateSignatureModeUi();
+            if (activeSignatureMode === 'name') {
+                paintSignatureToCanvas(defaultSignatureForDocument(activeDocumentId));
+                return;
+            }
+            if (resetDraw) {
+                signaturePad.clear();
+                return;
+            }
+            paintSignatureToCanvas(signatureModes[activeDocumentId] === 'draw' ? signatures[activeDocumentId] : null);
+        }
         function resizeCanvasAndRestore() {
             const rect = signatureCanvas.getBoundingClientRect();
             const ratio = window.devicePixelRatio || 1;
@@ -944,16 +1078,7 @@
             signatureCanvas.height = rect.height * ratio;
             const ctx = signatureCanvas.getContext('2d');
             ctx.scale(ratio, ratio);
-            ctx.clearRect(0, 0, rect.width, rect.height);
-            signaturePad.clear();
-            if (activeDocumentId && signatures[activeDocumentId]) {
-                const img = new Image();
-                img.onload = () => {
-                    ctx.drawImage(img, 0, 0, rect.width, rect.height);
-                    signaturePad.fromDataURL(signatures[activeDocumentId]);
-                };
-                img.src = signatures[activeDocumentId];
-            }
+            setSignatureMode(activeSignatureMode);
         }
 
         function exportDataUrl() {
@@ -969,6 +1094,7 @@
 
         function openSignatureModal(documentId) {
             activeDocumentId = String(documentId);
+            activeSignatureMode = signatureModes[activeDocumentId] || 'name';
             const panel = document.querySelector(`[data-sign-panel="${activeDocumentId}"]`);
             const titleEl = panel?.querySelector('.signature-title');
             document.getElementById('modal-title').innerText = titleEl ? titleEl.innerText : 'Sign document';
@@ -1010,16 +1136,32 @@
         });
 
         document.getElementById('close-modal').addEventListener('click', closeModal);
-        document.getElementById('clear-signature').addEventListener('click', () => signaturePad.clear());
-        document.getElementById('save-signature').addEventListener('click', () => {
-            if (!activeDocumentId) return;
-            if (signaturePad.isEmpty()) {
-                alert('Please draw your signature before saving.');
+        signatureModeButtons.forEach(button => {
+            button.addEventListener('click', () => setSignatureMode(button.dataset.signatureMode, button.dataset.signatureMode === 'draw'));
+        });
+
+        document.getElementById('clear-signature').addEventListener('click', () => {
+            if (activeSignatureMode === 'name') {
+                setSignatureMode('name');
                 return;
             }
-            const signedData = exportDataUrl();
-            signatures[activeDocumentId] = signedData;
-            updatePreview(activeDocumentId, signedData);
+            signaturePad.clear();
+        });
+        document.getElementById('save-signature').addEventListener('click', () => {
+            if (!activeDocumentId) return;
+            if (activeSignatureMode === 'name') {
+                signatures[activeDocumentId] = defaultSignatureForDocument(activeDocumentId);
+                signatureModes[activeDocumentId] = 'name';
+            } else {
+                if (signaturePad.isEmpty()) {
+                    alert('Please draw your signature before saving.');
+                    return;
+                }
+                signatures[activeDocumentId] = exportDataUrl();
+                signatureModes[activeDocumentId] = 'draw';
+            }
+            updatePreview(activeDocumentId, signatures[activeDocumentId]);
+            renderAllFieldOverlays();
             closeModal();
         });
 
@@ -1087,7 +1229,16 @@
             overlay.style.fontSize = `${Math.max(10, Math.min(26, rect.height * 0.55))}px`;
 
             if (isSignature) {
-                overlay.textContent = field.label || field.key || field.type || '';
+                const signatureImage = signatures[String(documentId)];
+                if (signatureImage) {
+                    const img = document.createElement('img');
+                    img.className = 'field-overlay-signature-img';
+                    img.src = signatureImage;
+                    img.alt = 'signature';
+                    overlay.appendChild(img);
+                } else {
+                    overlay.textContent = field.label || field.key || field.type || '';
+                }
                 overlay.title = 'Click to sign';
                 overlay.addEventListener('click', () => openSignatureModal(documentId));
             } else {

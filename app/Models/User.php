@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Hash;
 use Laravel\Sanctum\HasApiTokens;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Storage;
 
 class User extends \TCG\Voyager\Models\User
 {
@@ -34,6 +35,7 @@ class User extends \TCG\Voyager\Models\User
         'last_name',
         'phone',
         'job_type',
+        'sign',
         'company_id',
         'position',
         'is_admin',
@@ -41,7 +43,7 @@ class User extends \TCG\Voyager\Models\User
         'email_verified_at',
         'type'
     ];
-    
+
      protected $dates = ['deleted_at'];
 
     /**
@@ -54,8 +56,8 @@ class User extends \TCG\Voyager\Models\User
         'remember_token',
         'name'
     ];
-    
-    
+
+
 
     /**
      * The attributes that should be cast to native types.
@@ -65,10 +67,10 @@ class User extends \TCG\Voyager\Models\User
     protected $casts = [
         'email_verified_at' => 'datetime',
     ];
-    
+
     public $additional_attributes = ['full_name'];
-  
-   
+
+
 //   protected static function booted()
 // {
 //     static::addGlobalScope('hide_tmp_emails', function (Builder $builder) {
@@ -80,7 +82,7 @@ class User extends \TCG\Voyager\Models\User
         return $this->belongsToMany(ModulePermission::class, 'user_module_permissions', 'user_id', 'module_permission_id')
             ->withTimestamps();
     }
-    
+
     public function scopeContractors($query)
     {
         return $query->where('is_admin', 1)
@@ -94,9 +96,9 @@ class User extends \TCG\Voyager\Models\User
     {
         return $this->morphMany(\App\Models\Device::class, 'deviceable');
     }
-    
-    
-   
+
+
+
 
      public function stripeAccount()
     {
@@ -105,27 +107,27 @@ class User extends \TCG\Voyager\Models\User
 
     public function getRawPasswordAttribute($value)
     {
-       
+
         // Check if the value is null or an empty string
         if (is_null($value) || $value === '') {
             return null; // Or return a default value if needed
         }
-    
+
         // Attempt to decode the value, handling any potential errors
         try {
             return base64_decode($value, true); // Using strict mode to avoid invalid characters
         } catch (\Exception $e) {
-            return null; 
+            return null;
         }
     }
 
-    
+
 
     public function routeNotificationForFirebase()
     {
         return $this->device_token;
     }
-    
+
     public function getFirstNameBrowseAttribute()
     {
         return ucfirst(strtolower($this->first_name)) .' '.ucfirst(strtolower($this->last_name));
@@ -208,15 +210,15 @@ class User extends \TCG\Voyager\Models\User
 
     //   return $authorized;
     // }
-    
+
     // public function hasSubscription($module = "")
     // {
     //     $authorized = false;
-    
+
     //     // Check if the user is an admin
     //     if ($this->is_admin) {
     //         if ($module) {
-                
+
     //             $authorized = $this->subscriptions()
     //                 ->where("is_active", 1)
     //                 ->where(function ($query) {
@@ -236,7 +238,7 @@ class User extends \TCG\Voyager\Models\User
     //                 })
     //                 ->where("slug", $module)
     //                 ->exists();
-                    
+
     //                 // dd($authorized);
     //         }
     //     } else {
@@ -266,7 +268,7 @@ class User extends \TCG\Voyager\Models\User
     //             }
     //         }
     //     }
-    
+
     //     return $authorized;
     // }
 
@@ -276,14 +278,14 @@ class User extends \TCG\Voyager\Models\User
         if (!$module) {
             return false;
         }
-        
-        
+
+
         $user = $this->is_admin ? $this : User::find($this->parent_id);
-    
+
         if (!$user) {
             return false;
         }
-    
+
         return $user->subscriptions()
             ->where('is_active', 1)
             ->where('slug', $module)
@@ -301,15 +303,15 @@ class User extends \TCG\Voyager\Models\User
             })
             ->exists();
     }
-    
-    
+
+
     public function hasFullModuleAccess(): bool
     {
-        
+
         if (!$this) {
             return false;
         }
-    
+
         // Use the existing hasModuleAccess method for full access check
         return $this->hasModuleAccess(null); // null => checks full access (1-11)
     }
@@ -320,34 +322,34 @@ class User extends \TCG\Voyager\Models\User
         if (is_null($this->parent_id)) {
             return true;
         }
-    
+
         // Default modules enabled for everyone
         $defaultEnabledIds = [4, 5, 6, 11];
-    
+
         // User assigned modules
         $userModuleIds = UserModulePermission::where('user_id', $this->id)
             ->pluck('module_permission_id')
             ->toArray();
-    
+
         // Combine assigned + default modules
         $allUserModules = array_unique(array_merge($userModuleIds, $defaultEnabledIds));
-    
+
         if (is_null($modules)) {
             // Check for full access (1-11)
             $fullModuleIds = range(1, 11);
             return empty(array_diff($fullModuleIds, $allUserModules));
         }
-    
+
         // If a single module ID is passed, convert to array
         $modules = (array) $modules;
-    
+
         // Check if user has all specified module(s)
         return empty(array_diff($modules, $allUserModules));
     }
 
 
-    
-   
+
+
     function get_timezone_from_country_code($countryCode)
     {
         $map = [
@@ -402,7 +404,8 @@ class User extends \TCG\Voyager\Models\User
             'zip_code' => optional($this->userAddress)->zip_code,
             'company_name' => $this->company->name ?? null,
             'company_address' => $this->company->address ?? null,
-            'license_no' => $this->company->license_no ?? null
+            'license_no' => $this->company->license_no ?? null,
+            'sign' => $this->signUrl()
         ]);
 
         // Remove nested arrays and IDs from relations
@@ -413,7 +416,28 @@ class User extends \TCG\Voyager\Models\User
 
         return $flattened;
     }
-    
+
+ private function signUrl()
+{
+    if (empty($this->sign)) {
+        return null;
+    }
+
+    // Already a full URL (e.g. external or data URL)
+    if (filter_var($this->sign, FILTER_VALIDATE_URL)) {
+        return $this->sign;
+    }
+
+    // Normalize any legacy prefix down to the relative path under storage/app/public
+    $file = str_ireplace(['storage/app/public/', 'storage/app/', 'storage/'], '', $this->sign);
+
+    if (Storage::disk('public')->exists($file)) {
+        return url('storage/' . $file);
+    }
+
+    return null;
+}
+
        protected static function booted()
     {
         static::creating(function ($user) {

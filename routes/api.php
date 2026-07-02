@@ -147,6 +147,7 @@ Route::prefix('/forgot-password')->group(function(){
 Route::get('/view-email', [App\Http\Controllers\Api\LoginController::class, 'emailPreview']);
 Route::get('/tc', [App\Http\Controllers\Api\EstimateController::class, 'test_report']);
 Route::get('/global-setting/upload-documents/{document}/preview', [App\Http\Controllers\Api\GlobalSettingController::class, 'preview_setting_document']);
+Route::get('/global-setting/upload-documents/{document}/filled-preview', [App\Http\Controllers\Api\GlobalSettingController::class, 'preview_filled_setting_document']);
 
 Route::prefix("/general")->group(function(){
     Route::get("/", function (Request $request){
@@ -296,6 +297,8 @@ Route::prefix("/general")->group(function(){
         //added by ashok
         Route::get("/{estimateId}/sheet", [App\Http\Controllers\Api\EstimateController::class, 'getSheetByEstimateId']);
         Route::post('/{estimateId}/add-edit-signature', [App\Http\Controllers\Api\EstimateController::class, 'addOrEditSignature']);
+        Route::post('/{estimate}/upload-documents', [App\Http\Controllers\Api\GlobalSettingController::class, 'uploadEstimateDocuments']);
+        Route::get('/{estimate}/upload-documents', [App\Http\Controllers\Api\GlobalSettingController::class, 'getEstimateDocuments']);
 
         Route::post("/duplicate", [App\Http\Controllers\Api\EstimateController::class, 'duplicate']);
         Route::get('/report/{id}', [App\Http\Controllers\Api\EstimateController::class, 'report']);
