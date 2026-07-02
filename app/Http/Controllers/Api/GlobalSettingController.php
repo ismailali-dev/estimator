@@ -858,7 +858,7 @@ public function uploadEstimateDocuments(Request $request, Estimate $estimate)
             'user_id' => $user->id,
             'company_id' => $user->company_id,
             'estimate_id' => $estimate->id,
-            'document_type' => 'estimate_upload',
+            'document_type' => 'sub_estimate_upload',
             'file_path' => $path,
             'file_type' => $extension,
             'document_name' => $documentName,
@@ -893,7 +893,7 @@ public function getEstimateDocuments(Request $request, Estimate $estimate)
 
     $documents = SettingDocument::where('estimate_id', $estimate->id)
         ->where('company_id', $user->company_id)
-        ->where('document_type', 'estimate_upload')
+        ->where('document_type', 'sub_estimate_upload')
         ->latest()
         ->get();
 
