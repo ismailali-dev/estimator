@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 ini_set('serialize_precision', -1);
 
 use App\Http\Controllers\Api\NotificationController;
@@ -181,7 +181,7 @@ Route::prefix("/general")->group(function(){
 
   Route::group(['middleware' => ['auth:app-api', \App\Http\Middleware\UserAccessPermissionMiddleware::class]], function () {
     Route::prefix("/me")->group(function(){
-        
+
         Route::get('/app-update', [App\Http\Controllers\Api\UserController::class, 'getLatestUpdate']);
         Route::get('/profile', [App\Http\Controllers\Api\UserController::class, 'profile']);
         Route::post('/delete-my-account', [App\Http\Controllers\Api\UserController::class, 'deleteMyAccount']);
@@ -197,14 +197,14 @@ Route::prefix("/general")->group(function(){
 
     //Route::prefix("/users")->middleware(['users.permission:1'])->group(function(){
     Route::prefix("/users")->group(function(){
-        
+
         Route::get('/permissions-module', [\App\Http\Controllers\Api\UserController::class, 'getPermissionsModules']);
         Route::get('/', [App\Http\Controllers\Api\UserController::class, 'companyUser']);
         Route::get('/edit/{user}', [App\Http\Controllers\Api\UserController::class, 'editCompanyUser']);
         Route::post('/create-user', [App\Http\Controllers\Api\UserController::class, 'createCompanyUser']);
         Route::post('/update/{user}', [App\Http\Controllers\Api\UserController::class, 'updateCompanyUser']);
         Route::post('/delete/{user}', [App\Http\Controllers\Api\UserController::class, 'deleteCompanyUser']);
-        
+
     });
 
     Route::prefix("/global-setting")->group(function(){
@@ -217,17 +217,19 @@ Route::prefix("/general")->group(function(){
         Route::post('/delete/{setting}', [App\Http\Controllers\Api\GlobalSettingController::class, 'delete']);
         Route::get('/setting/{setting}', [App\Http\Controllers\Api\GlobalSettingController::class, 'edit']);
         Route::post('/setting/{setting}', [App\Http\Controllers\Api\GlobalSettingController::class, 'update']);
-        
+
          Route::post('/upload-documents', [App\Http\Controllers\Api\GlobalSettingController::class, 'upload_setting_documents']);
          Route::get('/upload-documents', [App\Http\Controllers\Api\GlobalSettingController::class, 'get_setting_documents']);
          Route::delete('/upload-documents/{document}', [App\Http\Controllers\Api\GlobalSettingController::class, 'delete_setting_document']);
         //  Route::get('/merge-documents', [App\Http\Controllers\Api\GlobalSettingController::class, 'mergeDocuments']);
          Route::put('/setting-documents/update', [App\Http\Controllers\Api\GlobalSettingController::class, 'update_setting_documents']);
-         
-        Route::post('/send-documents-email', [App\Http\Controllers\Api\GlobalSettingController::class, 'sendDocumentsByEmail']);
 
-         
-         
+        Route::post('/send-documents-email', [App\Http\Controllers\Api\GlobalSettingController::class, 'sendDocumentsByEmail']);
+        Route::post('/{estimate}/upload-documents', [App\Http\Controllers\Api\GlobalSettingController::class, 'uploadEstimateDocuments']);
+        Route::get('/{estimate}/upload-documents', [App\Http\Controllers\Api\GlobalSettingController::class, 'getEstimateDocuments']);
+
+
+
 
     });
 
@@ -274,13 +276,13 @@ Route::prefix("/general")->group(function(){
         Route::post('/update/{id}', [App\Http\Controllers\Api\TemplateController::class, 'update']);//->middleware(["users.permission:1"]);
         Route::delete('/delete/{id}', [App\Http\Controllers\Api\TemplateController::class, 'delete']);
         Route::post('/reorder', [App\Http\Controllers\Api\TemplateController::class, 'reorder']);
-        
+
         Route::get('/downloadable-templates', [App\Http\Controllers\Api\TemplateController::class, 'publicTemplates']); // all templates from master user
         // Route::get('/downloadable-templates2', [App\Http\Controllers\Api\TemplateController::class, 'publicTemplates2']); // all templates from master user
         Route::post('/sync/{id}', [App\Http\Controllers\Api\TemplateController::class, 'syncTemplate']); // download/sync
-        
-    
-    
+
+
+
     });
     Route::prefix("/estimate")->group(function(){
         Route::get("/", [App\Http\Controllers\Api\EstimateController::class, 'index']);
@@ -297,8 +299,6 @@ Route::prefix("/general")->group(function(){
         //added by ashok
         Route::get("/{estimateId}/sheet", [App\Http\Controllers\Api\EstimateController::class, 'getSheetByEstimateId']);
         Route::post('/{estimateId}/add-edit-signature', [App\Http\Controllers\Api\EstimateController::class, 'addOrEditSignature']);
-        Route::post('/{estimate}/upload-documents', [App\Http\Controllers\Api\GlobalSettingController::class, 'uploadEstimateDocuments']);
-        Route::get('/{estimate}/upload-documents', [App\Http\Controllers\Api\GlobalSettingController::class, 'getEstimateDocuments']);
 
         Route::post("/duplicate", [App\Http\Controllers\Api\EstimateController::class, 'duplicate']);
         Route::get('/report/{id}', [App\Http\Controllers\Api\EstimateController::class, 'report']);
@@ -333,25 +333,25 @@ Route::prefix("/general")->group(function(){
         Route::post("/{estimate}/eow", [App\Http\Controllers\Api\ProfitBudgetController::class, 'setExtraWorkOrders']);//->middleware("users.permission");;
         Route::get("/{estimate}/list", [App\Http\Controllers\Api\ProfitBudgetController::class, 'list']);
         Route::post("/{estimate}/estimate-sheet/{estimateSheet}", [App\Http\Controllers\Api\ProfitBudgetController::class, 'setActualAmountEstimateSheet']);;//->middleware("users.permission");
-        
+
         Route::get("/{estimate}/{type}/settings", [App\Http\Controllers\Api\ProfitBudgetController::class, 'getAllProfitBudgetEstimateSettings']);
         Route::post("/{estimate}/update-actual-costs", [App\Http\Controllers\Api\ProfitBudgetController::class, 'updatemergedActualCost']);
         Route::post("/{estimate}/update-actual-costs", [App\Http\Controllers\Api\ProfitBudgetController::class, 'updatemergedActualCost']);
         Route::post("update-profit-budget-settings-actual-costs", [App\Http\Controllers\Api\ProfitBudgetController::class, 'updateProfitBudgetSettingsActualCost']);
-        
+
     });
 
     //Route::prefix("/material-list")->middleware(['users.permission:1'])->group(function() {
     Route::prefix("/material-list")->group(function() {
-       
+
         Route::get("/{estimate}", [App\Http\Controllers\Api\ProfitBudgetController::class, 'materialList']);
         Route::get("/{estimate}/total", [App\Http\Controllers\Api\ProfitBudgetController::class, 'materialTotal']);
         Route::post("/{estimate}/email", [App\Http\Controllers\Api\ProfitBudgetController::class, 'emailMaterialListDoc']);
         Route::get("/{estimate}/supplier", [App\Http\Controllers\Api\ProfitBudgetController::class, 'materialListSupplier']);
         Route::get("/{estimate}/{group}", [App\Http\Controllers\Api\ProfitBudgetController::class, 'materialDetail']);
         Route::post("/{estimate}/update-purchasing-cost-by-group", [App\Http\Controllers\Api\ProfitBudgetController::class, 'updateActualCost']);
-        
-         
+
+
     });
 
 
@@ -371,40 +371,40 @@ Route::prefix("/general")->group(function(){
     });
 
     Route::prefix("/subscriptions")->group(function(){
-        
+
         Route::get('/check', [App\Http\Controllers\Api\SubscriptionController::class, 'check']);
         Route::get('/status', [App\Http\Controllers\Api\SubscriptionController::class, 'checkStatus']);
         Route::get('/manage', [App\Http\Controllers\Api\SubscriptionController::class, 'manage']);
         Route::post('/pay-now', [App\Http\Controllers\Api\SubscriptionController::class, 'payNow']);
         Route::post('/cancel/{subscription}', [App\Http\Controllers\Api\SubscriptionController::class, 'cancel']);
         Route::post('/reactivate/{subscription}', [App\Http\Controllers\Api\SubscriptionController::class, 'reactivate']);
-        
-        
+
+
         Route::get('/default-payment-method', [App\Http\Controllers\Api\SubscriptionController::class, 'getDefaultPaymentMethod']);
-        
-        
+
+
         Route::post('/payment-method', [App\Http\Controllers\Api\SubscriptionController::class, 'createPaymentMethod']);
-        
-        
+
+
 
         // Route to get all payment methods
         Route::get('/payment-methods', [App\Http\Controllers\Api\SubscriptionController::class, 'getPaymentMethods']);
-    
+
         // Route to set a payment method as default
         Route::post('/payment-method/set-default', [App\Http\Controllers\Api\SubscriptionController::class, 'setDefaultPaymentMethod']);
-        
-        
-        
-        
+
+
+
+
     });
-    
+
     // Route::prefix("/card-processing")->group(function(){
     //     Route::post('contractor/stripe/create', [App\Http\Controllers\Api\StripeCreditCardProcessingController::class, 'getOnboardingLink']);
     //     Route::get('contractor/stripe/callback', [App\Http\Controllers\Api\StripeCreditCardProcessingController::class, 'stripeCallback'])->name('contractor.stripe.callback');
     //     Route::get('contractor/stripe/refresh', [App\Http\Controllers\Api\StripeCreditCardProcessingController::class, 'refreshOnboardingLink'])->name('contractor.stripe.refresh');
     // });
-    
-        
+
+
 
     Route::prefix("/code-book")->group(function(){
         Route::get('/', [App\Http\Controllers\Api\CodeBookController::class, 'index']);
@@ -418,7 +418,7 @@ Route::prefix("/general")->group(function(){
 
     Route::prefix("/memberships")->group(function(){
         Route::get('/', [App\Http\Controllers\Api\MembershipController::class, 'index']);
-        
+
         Route::post('/total', [App\Http\Controllers\Api\MembershipController::class, 'membershipById']);
         Route::post('/test-stripe', [App\Http\Controllers\Api\MembershipController::class, 'testStripe']);
         Route::post('/check-subscriptions', [App\Http\Controllers\Api\MembershipController::class, 'checkSubscriptions']);
@@ -448,45 +448,45 @@ Route::prefix("/general")->group(function(){
 Route::prefix('card-processing')->group(function () {
     // Authenticated routes
     Route::middleware(['auth:app-api'])->group(function () {
-        
-        
+
+
         Route::post('stripe/onboard', [App\Http\Controllers\Api\StripeCreditCardProcessingController::class, 'onBoardStripe']);
         Route::post('stripe/connect', [App\Http\Controllers\Api\StripeCreditCardProcessingController::class, 'connectStripe']);
-        
-        
+
+
         Route::post('stripe/connect/create/intent', [App\Http\Controllers\Api\StripeCreditCardProcessingController::class, 'createPaymentIntent']);
         Route::post('stripe/connect/pay', [App\Http\Controllers\Api\StripeCreditCardProcessingController::class, 'payContractor']);
-        
-        
+
+
         Route::post('stripe/disconnect', [App\Http\Controllers\Api\StripeCreditCardProcessingController::class, 'disconnectStripeAccount']);
         // Route::post('stripe/connect/update/status', [App\Http\Controllers\Api\StripeCreditCardProcessingController::class, 'updateStatus']);
-        
+
         Route::post('stripe/connect/generate-invoice-link', [App\Http\Controllers\Api\StripeCreditCardProcessingController::class, 'generateInvoiceLink']);
-        
+
         Route::get('stripe/connect/status', [App\Http\Controllers\Api\StripeCreditCardProcessingController::class, 'checkConnectStatus']);
-        
+
         Route::get('customer/transactions', [App\Http\Controllers\Api\StripeCreditCardProcessingController::class, 'getTransactions']);
-        
-        
+
+
     });
-    
+
     // Route::get('customer/transactions', [App\Http\Controllers\Api\StripeCreditCardProcessingController::class, 'getTransactions']);
-    //onboarding  
-    Route::get('stripe/onboard/refreshLink', [App\Http\Controllers\Api\StripeCreditCardProcessingController::class, 'onBoardRefreshLink'])->name('stripe.onboard.refreshLink'); 
-        
-       
+    //onboarding
+    Route::get('stripe/onboard/refreshLink', [App\Http\Controllers\Api\StripeCreditCardProcessingController::class, 'onBoardRefreshLink'])->name('stripe.onboard.refreshLink');
+
+
 
     Route::get('stripe/onboard/callback', [App\Http\Controllers\Api\StripeCreditCardProcessingController::class, 'onBoardCallback'])->name('stripe.onboard.callback');
-    
+
      Route::post('stripe/onboard/webhook', [App\Http\Controllers\Api\StripeCreditCardProcessingController::class, 'handleonBoardWebhook']);
-   
+
 
     //stripe connect
     Route::get('stripe/connect/callback', [App\Http\Controllers\Api\StripeCreditCardProcessingController::class, 'connectCallback'])->name('stripe.connect.callback');
-    
 
-    
-    
+
+
+
 });
 
 
