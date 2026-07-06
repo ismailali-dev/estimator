@@ -12,19 +12,25 @@ class SettingDocumentsMail extends Mailable
 
     public $documents;
     public $signingLink;
+    public $description;
 
 
-    public function __construct($documents, $signingLink)
+    public function __construct($documents, $signingLink, $description = null)
     {
         $this->documents   = $documents;
         $this->signingLink = $signingLink;
+        $this->description = $description;
     }
 
     public function build()
     {
         $mail = $this->subject('Please Sign Your Documents')
                     ->view('emails.setting_documents')
-                    ->with(['signingLink' => $this->signingLink]);
+                    ->with([
+                        'documents' => $this->documents,
+                        'signingLink' => $this->signingLink,
+                        'description' => $this->description,
+                    ]);
 
         // foreach ($this->documents as $doc) {
         //     $fullPath = storage_path('app/public/' . $doc->file_path);

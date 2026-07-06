@@ -253,6 +253,80 @@
             display: block;
         }
 
+        .signed-badge {
+            position: relative;
+            display: inline-flex;
+            flex-direction: column;
+            justify-content: center;
+            min-width: 190px;
+            min-height: 58px;
+            padding: 0.35rem 0.75rem 0.28rem;
+            border: 2px solid #5a4fff;
+            border-radius: 0.45rem;
+            background: #fff;
+            color: #1f2933;
+            font-family: Arial, sans-serif;
+            line-height: 1;
+        }
+
+        .signed-badge-label {
+            position: absolute;
+            top: -0.58rem;
+            left: 1.8rem;
+            padding: 0 0.18rem;
+            background: #fff;
+            color: #1f2933;
+            font-size: 0.66rem;
+            font-weight: 700;
+        }
+
+        .signed-badge img {
+            width: 150px;
+            max-width: 100%;
+            height: 32px;
+            object-fit: contain;
+            object-position: left center;
+            display: block;
+        }
+
+        .signed-badge-code {
+            max-width: 150px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: #4b5563;
+            font-size: 0.58rem;
+            font-weight: 600;
+            letter-spacing: 0;
+        }
+
+        .field-overlay .signed-badge {
+            width: 100%;
+            height: 100%;
+            min-width: 0;
+            min-height: 0;
+            padding: 0.18rem 0.35rem 0.12rem;
+            border-width: 2px;
+            border-radius: 0.35rem;
+            transform: scale(0.96);
+        }
+
+        .field-overlay .signed-badge-label {
+            top: -0.43rem;
+            left: 1rem;
+            font-size: 0.46rem;
+        }
+
+        .field-overlay .signed-badge img {
+            width: 100%;
+            height: calc(100% - 12px);
+        }
+
+        .field-overlay .signed-badge-code {
+            max-width: 100%;
+            font-size: 0.42rem;
+        }
+
         .loading-card, .error-card {
             background: #fffdf9;
             border-radius: 1.25rem;
@@ -321,24 +395,18 @@
             display: inline-flex;
             align-items: center;
             gap: 0.7rem;
-            background: var(--signature-bg);
-            border: 1px solid #e2d5ca;
-            border-radius: 48px;
-            padding: 0.45rem 1.2rem;
+            background: transparent;`n            border: 0;`n            border-radius: 0;`n            padding: 0;
             cursor: pointer;
             transition: all 0.2s ease;
-            box-shadow: 0 1px 1px rgba(0, 0, 0, 0.02);
+            box-shadow: none;
         }
 
         .signature-preview:hover {
-            background: #fef7ef;
-            border-color: var(--accent-gold);
-            transform: scale(0.98);
+            transform: translateY(-1px);
         }
 
         .signature-preview.is-signed {
-            background: #eef4ea;
-            border-color: var(--success-emerald);
+            background: transparent;
         }
 
         .signature-preview img {
@@ -356,6 +424,19 @@
         .signature-preview-note {
             font-size: 0.65rem;
             color: #9e8f7e;
+        }
+
+        .signed-submit-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 2.5rem;
+        }
+
+        .signed-submit-date {
+            color: #0f172a;
+            font-size: 1.05rem;
+            font-weight: 700;
         }
 
         .signature-line {
@@ -778,6 +859,7 @@
         $signerName = preg_replace('/\d+/', '', str_replace(['.', '_', '-'], ' ', $signerBase));
         $signerName = trim(preg_replace('/\s+/', ' ', $signerName));
         $signerName = $signerName !== '' ? ucwords($signerName) : 'Customer';
+        $signingReference = substr(str_replace('-', '', (string) $token), 0, 12);
     @endphp
 
     <div id="success-state" class="success-card hidden">
@@ -831,26 +913,20 @@
 
                                         <div class="signature-row">
                                             <div class="signature-row-label">Signature</div>
-                                            <div class="signature-action">
+                                            <div class="signature-action signed-submit-row">
                                                 <div class="signature-preview signature-trigger"
                                                      data-document-id="{{ $document->id }}"
                                                      data-signature-preview="{{ $document->id }}"
                                                      role="button"
                                                      tabindex="0">
-                                                    <span class="signature-preview-label">✍️ Add your mark</span>
-                                                    <span class="signature-preview-note">draw to sign</span>
+                                                    <span class="signed-badge">
+                                                        <span class="signed-badge-label">Signed by:</span>
+                                                        <span class="signature-preview-label">Add your mark</span>
+                                                        <span class="signed-badge-code">pending signature</span>
+                                                    </span>
                                                 </div>
+                                                <div class="signed-submit-date" data-signature-date="{{ $document->id }}">—</div>
                                             </div>
-                                        </div>
-
-                                        <div class="signature-row">
-                                            <div class="signature-row-label">Printed name</div>
-                                            <div class="signature-line">{{ $signerName }}</div>
-                                        </div>
-
-                                        <div class="signature-row">
-                                            <div class="signature-row-label">Date of signing</div>
-                                            <div class="signature-line" data-signature-date="{{ $document->id }}">—</div>
                                         </div>
 
                                         <div class="signature-meta" data-signature-meta="{{ $document->id }}"></div>
@@ -978,6 +1054,11 @@
         const defaultSignatureCache = {};
         const fieldValues = {};
         const defaultSignerName = @json($signerName);
+        const signingReference = @json($signingReference);
+        const prefilledUserSignature = {
+            url: @json($prefilledUserSignatureUrl ?? null),
+            text: @json($prefilledUserSignatureText ?? null),
+        };
         const signatureModal = document.getElementById('signature-modal');
         const signatureCanvas = document.getElementById('signature-pad');
         const signatureModeButtons = document.querySelectorAll('[data-signature-mode]');
@@ -997,6 +1078,25 @@
             return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
         }
 
+        function formatShortDate() {
+            const date = new Date();
+            return date.toLocaleDateString('en-US', { year: 'numeric', month: 'numeric', day: 'numeric' });
+        }
+
+        function signatureReference(documentId) {
+            return `${signingReference}${String(documentId || '').padStart(3, '0')}`.slice(0, 14).toUpperCase();
+        }
+
+        function signedBadgeHtml(dataUrl, documentId) {
+            return `
+                <span class="signed-badge">
+                    <span class="signed-badge-label">Signed by:</span>
+                    <img src="${dataUrl}" alt="signature">
+                    <span class="signed-badge-code">${signatureReference(documentId)}...</span>
+                </span>
+            `;
+        }
+
         function buildDefaultSignatureDataUrl(name) {
             const canvas = document.createElement('canvas');
             canvas.width = 900;
@@ -1014,13 +1114,7 @@
                 fontSize -= 4;
             } while (ctx.measureText(safeName).width > canvas.width - 60 && fontSize > 36);
 
-            ctx.fillText(safeName, canvas.width / 2, 72);
-            ctx.lineWidth = 4;
-            ctx.strokeStyle = 'rgba(58, 53, 48, 0.75)';
-            ctx.beginPath();
-            ctx.moveTo(90, 118);
-            ctx.quadraticCurveTo(450, 138, 810, 118);
-            ctx.stroke();
+            ctx.fillText(safeName, canvas.width / 2, 78);
 
             return canvas.toDataURL('image/png');
         }
@@ -1120,13 +1214,14 @@
 
             if (previewDiv) {
                 previewDiv.classList.add('is-signed');
-                previewDiv.innerHTML = `<img src="${dataUrl}" alt="signature" style="max-height:38px;"><span class="signature-preview-label">✓ Signed</span><span class="signature-preview-note">tap to edit</span>`;
+                previewDiv.innerHTML = signedBadgeHtml(dataUrl, documentId);
+                previewDiv.title = 'Tap to edit signature';
             }
             if (metaSpan) {
                 metaSpan.innerText = 'Signature secured, ready for submission.';
             }
             if (dateSpan) {
-                dateSpan.innerText = todayStr;
+                dateSpan.innerText = formatShortDate();
             }
         }
 
@@ -1204,9 +1299,17 @@
             return { x, y, width, height };
         }
 
+        function normalizeFieldKey(field) {
+            return String(field.key || field.name || field.label || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+        }
+
+        function isUserSignatureField(field) {
+            return ['esign_user', 'user_signature', 'contractor_signature'].includes(normalizeFieldKey(field));
+        }
+
         function fieldLooksLikeSignature(field) {
-            const value = `${field.type || ''} ${field.key || ''} ${field.label || ''}`.toLowerCase();
-            return value.includes('signature') || value.includes('e-signature') || value.includes('esignature');
+            const value = String((field.type || '') + ' ' + (field.key || '') + ' ' + (field.label || '')).toLowerCase();
+            return value.includes('signature') || value.includes('e-signature') || value.includes('esignature') || value.includes('esign_customer') || value.includes('esign_user') || value.includes('esign');
         }
 
         function fieldIdentity(field) {
@@ -1229,18 +1332,23 @@
             overlay.style.fontSize = `${Math.max(10, Math.min(26, rect.height * 0.55))}px`;
 
             if (isSignature) {
-                const signatureImage = signatures[String(documentId)];
-                if (signatureImage) {
-                    const img = document.createElement('img');
-                    img.className = 'field-overlay-signature-img';
-                    img.src = signatureImage;
-                    img.alt = 'signature';
-                    overlay.appendChild(img);
+                if (isUserSignatureField(field)) {
+                    if (prefilledUserSignature.url) {
+                        overlay.innerHTML = signedBadgeHtml(prefilledUserSignature.url, documentId);
+                    } else {
+                        overlay.textContent = prefilledUserSignature.text || field.value || field.label || field.key || '';
+                    }
+                    overlay.title = 'User signature';
                 } else {
-                    overlay.textContent = field.label || field.key || field.type || '';
+                    const signatureImage = signatures[String(documentId)];
+                    if (signatureImage) {
+                        overlay.innerHTML = signedBadgeHtml(signatureImage, documentId);
+                    } else {
+                        overlay.textContent = field.label || field.key || field.type || '';
+                    }
+                    overlay.title = 'Click to sign';
+                    overlay.addEventListener('click', () => openSignatureModal(documentId));
                 }
-                overlay.title = 'Click to sign';
-                overlay.addEventListener('click', () => openSignatureModal(documentId));
             } else {
                 const input = document.createElement('input');
                 input.className = 'field-overlay-input';

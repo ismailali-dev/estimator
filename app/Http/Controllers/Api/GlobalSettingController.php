@@ -30,8 +30,8 @@ use Barryvdh\DomPDF\Facade\Pdf;
 
 class GlobalSettingController extends ApiBaseController
 {
-   
-   
+
+
     public function types()
     {
         // Retrieve only the main setting types (those without a parent_id)
@@ -39,25 +39,25 @@ class GlobalSettingController extends ApiBaseController
             $settingType->subscription_status = true; // Set default status
             return $settingType;
         });
-    
+
         // Check if the user has the required subscription
         $hasSubscription = auth()->user()->hasSubscription(Membership::SUBSCRIPTION_GLOBAL_SETTING_SUPPORT);
-        
+
         // If no subscription, set the subscription status for the specific record ID constant
         if (!$hasSubscription) {
             $record = $settingTypes->firstWhere('id', SettingType::SETTING_TYPE_FOR_PROFIT_BUDGET); // Use constant for ID
             if ($record) {
                 $record->subscription_status = false; // Update status to false
             }
-    
+
             // Set response message indicating lack of subscription
             $this->response_data["message"] = "No subscription found for global setting support.";
         }
-    
+
         // Set response data and status
         $this->response_data["data"] = $settingTypes;
         $this->response_data["status"] = $hasSubscription; // Set status based on subscription
-    
+
         return $this->sendJsonResponse();
     }
 
@@ -66,30 +66,30 @@ class GlobalSettingController extends ApiBaseController
     {
         // Retrieve the parent setting type
         $parentSettingType = SettingType::find($parentId);
-    
+
         // If parent setting type doesn't exist, return an error message
         if (!$parentSettingType) {
             $this->response_data["message"] = "Parent category not found.";
             $this->response_data["status"] = false;
             return $this->sendJsonResponse();
         }
-    
+
         // Fetch child categories
         $childSettingTypes = SettingType::where('parent_id', $parentId)->get();
-    
+
         // Check if there are any child categories
         if ($childSettingTypes->isEmpty()) {
             $this->response_data["message"] = "No child categories found for this parent.";
             $this->response_data["status"] = false;
             return $this->sendJsonResponse();
         }
-    
+
         // Retrieve the user's company
         $company = auth()->user()->company;
-    
+
         // Fetch the first estimated annual job cost, or return 0 if not available
         $estimatedAnnualJobCost = optional($company->userEstimatedAnnualJobCosts->first())->estimated_annual_job_cost ?? "0";
-    
+
         // Prepare response data
         $this->response_data = [
             "status" => true,
@@ -98,29 +98,29 @@ class GlobalSettingController extends ApiBaseController
                 "user_estimated_annual_job_costs" => $estimatedAnnualJobCost
             ]
         ];
-    
+
         return $this->sendJsonResponse();
     }
 
 
-    
+
     public function updateAnnualJobCost(Request $request)
     {
-        
-       
+
+
         // Step 0: Validation
         $validator = Validator::make($request->all(), [
             'estimated_annual_job_cost' => 'required|numeric|min:0',
             'setting_type_id' => 'required|exists:setting_types,id',
         ]);
-    
+
         if ($validator->fails()) {
             return response()->json([
                 'status' => false,
                 'message' => $validator->errors()->first(),
             ], 400);
         }
-    
+
         $currentUser = auth()->user();
         if (!$currentUser) {
             return response()->json([
@@ -128,16 +128,16 @@ class GlobalSettingController extends ApiBaseController
                 'message' => 'User not authenticated.',
             ], 401);
         }
-    
-       
-    
+
+
+
         if (!$currentUser) {
             return response()->json([
                 'status' => false,
                 'message' => 'Parent user not found.',
             ], 404);
         }
-    
+
         // Step 2: Check company (parent/admin must have company)
         $company = $currentUser->company;
         if (!$company) {
@@ -146,7 +146,7 @@ class GlobalSettingController extends ApiBaseController
                 'message' => 'Company not found for the user.',
             ], 404);
         }
-    
+
         // step 3: Permission check -> Profit Budget (id=3)
         if (!$currentUser->hasModuleAccess(10)) {
             return response()->json([
@@ -154,20 +154,20 @@ class GlobalSettingController extends ApiBaseController
                 'message' => 'You do not have permission to update annual job cost.',
             ], 403);
         }
-    
+
         // //step 4: If child user, validate that child belongs to same company
         // if (!$currentUser->is_admin && $currentUser->parent_id) {
-            
+
         //     if ($currentUser->company_id !== $company->id) {
         //         return response()->json([
         //             'status' => false,
         //             'message' => 'You are not allowed to update cost for this company.',
         //         ], 403);
         //     }
-            
-            
+
+
         // }
-    
+
         // step 5: Update or create record against parent/admin company
         $jobCost = UserEstimatedAnnualJobCost::updateOrCreate(
             [
@@ -178,35 +178,35 @@ class GlobalSettingController extends ApiBaseController
                 'setting_type_id' => $request->setting_type_id,
             ]
         );
-    
+
         return response()->json([
             'status' => true,
             'message' => 'Annual job cost updated successfully.',
             'data' => $jobCost,
         ]);
     }
-    
+
 
 
     // public function settingOfType(SettingType $settingType)
     // {
     //     // Fetch settings of the specified type for the authenticated user
     //     $settings = auth()->user()->settings()->where("type", $settingType->id)->get();
-    
+
     //     // Calculate the total cost of all settings
     //     $totalCost = $settings->sum('value'); // Assuming 'value' is the cost of each setting
-    
+
     //     // Calculate the percentage for each setting based on the total cost
     //     $settings = $settings->map(function ($setting) use ($totalCost) {
     //         // Calculate individual setting's percentage of the total cost
     //         $settingPercentage = $totalCost > 0 ? ($setting->value / $totalCost) * 100 : 0;
-            
+
     //         // Round the percentage to 2 decimal places and add it as an attribute to each setting
     //         $setting->percentage_of_total = round($settingPercentage, 2);
-    
+
     //         return $setting;
     //     });
-    
+
     //     // Set the response data with `total_cost`, `total_percentage`, and `settings`
     //     $this->response_data["data"] = [
     //         "total_cost" => round($totalCost, 2),
@@ -214,23 +214,23 @@ class GlobalSettingController extends ApiBaseController
     //         "settings" => $settings
     //     ];
     //     $this->response_data["status"] = true;
-    
+
     //     return $this->sendJsonResponse();
     // }
-    
-    
-    
+
+
+
 public function settingOfType(SettingType $settingType)
 {
     $user = auth()->user();
-    
+
     $user = $user->is_admin ? $user : User::find($user->parent_id);
-    
+
     $defaults = $this->defaultSettingsForType($settingType->id);
 
     // Current saved settings for this user and this type
     $savedSettings = $user->settings()->where('type', $settingType->id)->orderBy('sort_order', 'asc')->get();
-    
+
     $savedMap = $savedSettings->keyBy('title');
     $titlesArray = $savedSettings->pluck('title')->toArray();
 
@@ -363,11 +363,11 @@ private function defaultSettingsForType($typeId)
         ],
         // 6=>[
         //     "Journey Man",
-        //     "Apprentice", 
+        //     "Apprentice",
         //     "Helper",
         //     "Crew 1",
-        //     "Apprentice", 
-        //     "Helper" 
+        //     "Apprentice",
+        //     "Helper"
         //     ]
     ][$typeId] ?? [];
 }
@@ -400,10 +400,10 @@ public function addSetting(SettingType $settingType, Request $request)
     }
 
     $user = auth()->user();
-    
+
     $user = $user->is_admin ? $user : User::find($user->parent_id);
-    
-    
+
+
     // Get the max order for this setting type + user
     $maxOrder = \App\Models\Setting::where('type', $settingType->id)
         ->where('user_id', $user->id)  // Make it user-specific
@@ -411,15 +411,15 @@ public function addSetting(SettingType $settingType, Request $request)
 
     // Assign the new sort order by incrementing the max order value
     $newOrder = $maxOrder + 1;
-    
+
     if (!$user) {
-       
-       
+
+
         return response()->json([
                 'status' => false,
                 'message' => 'User not found.',
             ], 404);
-            
+
     }
 
     // Create the new setting
@@ -455,13 +455,13 @@ public function addSetting(SettingType $settingType, Request $request)
 
 public function delete(Setting $setting)
 {
-    
-    
+
+
     $user = auth()->user();
-    
+
     $user = $user->is_admin ? $user : User::find($user->parent_id);
-    
-    
+
+
 
     $setting = $user->settings()->where("id", $setting->id)->first();
 
@@ -502,7 +502,7 @@ public function delete(Setting $setting)
         return $this->sendJsonResponse();
     }
 
-  
+
 
 public function update(Setting $setting, Request $request)
 {
@@ -564,7 +564,7 @@ public function reorderSetting(SettingType $settingType, Request $request)
 
     $user = auth()->user();
     $user = $user->is_admin ? $user : User::find($user->parent_id);
-    
+
     $settingId = $request->input('setting_id');
     $newOrder = $request->input('reorder_id');
 
@@ -644,7 +644,7 @@ private function reindexSettingOrders(int $userId, int $settingTypeId)
     foreach ($settings as $setting) {
         $setting->sort_order = $counter++;
         $setting->save();
-    }   
+    }
 }
 
 
@@ -701,7 +701,7 @@ public function upload_setting_documents(Request $request)
             'document_type' => 'file',
             'file_path'     => $path,
             'file_type'     => $extension,
-            'document_name' => $name,  
+            'document_name' => $name,
             'signature_required' => $signature, // Save signature data to the database
             'fields' => $fields,
         ]);
@@ -756,12 +756,12 @@ public function get_setting_documents(Request $request)
     $user = auth()->user();
 
   $documents = SettingDocument::where('user_id', $user->id)
-    ->where('document_type', '!=', 'estimate')
+    ->whereNotIn('document_type', ['estimate', 'estimate_upload', 'sub_estimate_upload'])
     ->latest()
     ->get();
 
     $response = [];
-    
+
     foreach ($documents as $doc) {
         $response[] = [
             'id' => $doc->id,
@@ -771,6 +771,7 @@ public function get_setting_documents(Request $request)
             'preview_url' => url('/api/global-setting/upload-documents/' . $doc->id . '/preview'),
             'filled_preview_url' => url('/api/global-setting/upload-documents/' . $doc->id . '/filled-preview'),
             'label' => $doc->document_name,
+            'sort_order' => (int) $doc->sort_order,
             'signature_required' => $doc->signature_required,
             'fields' => $this->normalizeDocumentFields($doc->fields ?? []),
             'created_at' => $doc->created_at,
@@ -783,7 +784,7 @@ public function get_setting_documents(Request $request)
     ]);
 }
 
-public function uploadEstimateDocuments(Request $request, Estimate $estimate)
+public function uploadEstimateDocuments(Request $request, $estimate)
 {
     if (!auth()->check()) {
         return response()->json([
@@ -793,7 +794,9 @@ public function uploadEstimateDocuments(Request $request, Estimate $estimate)
     }
 
     $user = auth()->user();
-    if ((int) $estimate->company_id !== (int) $user->company_id) {
+    $estimate = $this->resolveEstimateForDocumentRequest($estimate, $user);
+
+    if (!$estimate) {
         return response()->json([
             'status'  => false,
             'message' => 'Estimate not found'
@@ -840,6 +843,10 @@ public function uploadEstimateDocuments(Request $request, Estimate $estimate)
     $names = $request->input('names', []);
     $signatureRequired = $request->boolean('signature_required', $request->boolean('sign_required'));
     $fields = $this->normalizeDocumentFields($request->input('fields', []));
+    $nextSortOrder = ((int) SettingDocument::where('estimate_id', $estimate->id)
+        ->where('company_id', $user->company_id)
+        ->whereIn('document_type', ['estimate_upload', 'sub_estimate_upload'])
+        ->max('sort_order')) + 1;
 
     foreach ($files as $index => $file) {
         $extension = strtolower($file->getClientOriginalExtension());
@@ -862,6 +869,7 @@ public function uploadEstimateDocuments(Request $request, Estimate $estimate)
             'file_path' => $path,
             'file_type' => $extension,
             'document_name' => $documentName,
+            'sort_order' => $nextSortOrder++,
             'signature_required' => $signatureRequired,
             'fields' => $fields,
         ]);
@@ -874,7 +882,7 @@ public function uploadEstimateDocuments(Request $request, Estimate $estimate)
     ]);
 }
 
-public function getEstimateDocuments(Request $request, Estimate $estimate)
+public function getEstimateDocuments(Request $request, $estimate)
 {
     if (!auth()->check()) {
         return response()->json([
@@ -884,7 +892,9 @@ public function getEstimateDocuments(Request $request, Estimate $estimate)
     }
 
     $user = auth()->user();
-    if ((int) $estimate->company_id !== (int) $user->company_id) {
+    $estimate = $this->resolveEstimateForDocumentRequest($estimate, $user);
+
+    if (!$estimate) {
         return response()->json([
             'status'  => false,
             'message' => 'Estimate not found'
@@ -893,14 +903,152 @@ public function getEstimateDocuments(Request $request, Estimate $estimate)
 
     $documents = SettingDocument::where('estimate_id', $estimate->id)
         ->where('company_id', $user->company_id)
-        ->where('document_type', 'sub_estimate_upload')
-        ->latest()
+        ->whereIn('document_type', ['estimate_upload', 'sub_estimate_upload'])
+        ->orderBy('sort_order')
+        ->orderBy('id')
         ->get();
 
     return response()->json([
         'status' => true,
         'data' => $this->formatSettingDocuments($documents),
     ]);
+}
+
+public function getAllDocuments(Request $request, $estimate)
+{
+    if (!auth()->check()) {
+        return response()->json([
+            'status'  => false,
+            'message' => 'Unauthenticated'
+        ], 401);
+    }
+
+    $user = auth()->user();
+    $estimate = $this->resolveEstimateForDocumentRequest($estimate, $user);
+
+    if (!$estimate) {
+        return response()->json([
+            'status'  => false,
+            'message' => 'Estimate not found'
+        ], 404);
+    }
+
+    $documents = SettingDocument::where('company_id', $user->company_id)
+        ->where(function ($query) use ($estimate, $user) {
+            $query->where(function ($estimateQuery) use ($estimate) {
+                $estimateQuery->where('estimate_id', $estimate->id)
+                    ->whereIn('document_type', ['estimate_upload', 'sub_estimate_upload']);
+            })->orWhere(function ($globalQuery) use ($user) {
+                $globalQuery->where('user_id', $user->id)
+                    ->whereNull('estimate_id')
+                    ->whereNotIn('document_type', ['estimate', 'estimate_upload', 'sub_estimate_upload']);
+            });
+        })
+        ->orderBy('sort_order')
+        ->orderBy('id')
+        ->get();
+
+    return response()->json([
+        'status' => true,
+        'data' => $this->formatSettingDocuments($documents),
+    ]);
+}
+
+public function reorderEstimateDocuments(Request $request, $estimate)
+{
+    if (!auth()->check()) {
+        return response()->json([
+            'status'  => false,
+            'message' => 'Unauthenticated'
+        ], 401);
+    }
+
+    $user = auth()->user();
+    $estimate = $this->resolveEstimateForDocumentRequest($estimate, $user);
+
+    if (!$estimate) {
+        return response()->json([
+            'status'  => false,
+            'message' => 'Estimate not found'
+        ], 404);
+    }
+
+    $validator = Validator::make($request->all(), [
+        'document_ids' => 'required|array|min:1',
+        'document_ids.*' => 'required|integer|distinct',
+    ]);
+
+    if ($validator->fails()) {
+        return response()->json([
+            'status'  => false,
+            'message' => $validator->errors()->first()
+        ], 422);
+    }
+
+    $documentIds = array_values($request->input('document_ids'));
+    $documents = SettingDocument::where('company_id', $user->company_id)
+        ->where(function ($query) use ($estimate, $user) {
+            $query->where(function ($estimateQuery) use ($estimate) {
+                $estimateQuery->where('estimate_id', $estimate->id)
+                    ->whereIn('document_type', ['estimate_upload', 'sub_estimate_upload']);
+            })->orWhere(function ($globalQuery) use ($user) {
+                $globalQuery->where('user_id', $user->id)
+                    ->whereNull('estimate_id')
+                    ->whereNotIn('document_type', ['estimate', 'estimate_upload', 'sub_estimate_upload']);
+            });
+        })
+        ->whereIn('id', $documentIds)
+        ->get()
+        ->keyBy('id');
+
+    if ($documents->count() !== count($documentIds)) {
+        return response()->json([
+            'status' => false,
+            'message' => 'One or more documents were not found for this estimate.'
+        ], 422);
+    }
+
+    DB::transaction(function () use ($documentIds, $documents) {
+        foreach ($documentIds as $index => $documentId) {
+            $documents[$documentId]->update(['sort_order' => $index + 1]);
+        }
+    });
+
+    $orderedDocuments = SettingDocument::where('company_id', $user->company_id)
+        ->where(function ($query) use ($estimate, $user) {
+            $query->where(function ($estimateQuery) use ($estimate) {
+                $estimateQuery->where('estimate_id', $estimate->id)
+                    ->whereIn('document_type', ['estimate_upload', 'sub_estimate_upload']);
+            })->orWhere(function ($globalQuery) use ($user) {
+                $globalQuery->where('user_id', $user->id)
+                    ->whereNull('estimate_id')
+                    ->whereNotIn('document_type', ['estimate', 'estimate_upload', 'sub_estimate_upload']);
+            });
+        })
+        ->orderBy('sort_order')
+        ->orderBy('id')
+        ->get();
+
+    return response()->json([
+        'status' => true,
+        'message' => 'Documents reordered successfully',
+        'data' => $this->formatSettingDocuments($orderedDocuments),
+    ]);
+}
+
+private function resolveEstimateForDocumentRequest($estimate, $user): ?Estimate
+{
+    if ($estimate instanceof Estimate) {
+        return (int) $estimate->company_id === (int) $user->company_id ? $estimate : null;
+    }
+
+    if (!is_scalar($estimate) || !ctype_digit((string) $estimate)) {
+        return null;
+    }
+
+    return Estimate::where('id', (int) $estimate)
+        ->where('company_id', $user->company_id)
+        ->first();
 }
 
 private function formatSettingDocuments($documents): array
@@ -915,6 +1063,7 @@ private function formatSettingDocuments($documents): array
             'preview_url' => url('/api/global-setting/upload-documents/' . $doc->id . '/preview'),
             'filled_preview_url' => url('/api/global-setting/upload-documents/' . $doc->id . '/filled-preview'),
             'label' => $doc->document_name,
+            'sort_order' => (int) $doc->sort_order,
             'signature_required' => (bool) $doc->signature_required,
             'fields' => $this->normalizeDocumentFields($doc->fields ?? []),
             'created_at' => $doc->created_at,
@@ -1053,7 +1202,15 @@ private function normalizeDocumentFields($fields): array
             $key = (string) ($field['key'] ?? $field['name'] ?? $field['label'] ?? $type);
             $normalizedKey = Str::slug($key, '_');
 
-            if (Str::contains($normalizedKey, ['signature', 'e_signature', 'esignature', 'digital_signature'])) {
+            if (Str::contains($normalizedKey, [
+                'signature',
+                'e_signature',
+                'esignature',
+                'digital_signature',
+                'esign',
+                'esign_customer',
+                'esign_user',
+            ])) {
                 $type = 'signature';
             }
 
@@ -1154,35 +1311,35 @@ public function delete_setting_document(SettingDocument $document)
 // {
 //     try {
 //         $user = auth()->user();
-        
+
 //         // Get documents ordered by ID or created_at for consistent merging
 //         $documents = SettingDocument::where('user_id', $user->id)
 //             ->orderBy('id', 'asc')
 //             ->get();
-        
+
 //         if ($documents->isEmpty()) {
 //             return response()->json([
 //                 'status' => false,
 //                 'message' => 'No documents found to merge.'
 //             ], 400);
 //         }
-        
+
 //         // Initialize FPDI
 //         $pdf = new Fpdi();
 //         $pdf->SetAutoPageBreak(false, 0);
-        
+
 //         // Create temp directory for converted files
 //         $tempDir = storage_path('app/temp/merged_' . uniqid());
 //         if (!file_exists($tempDir)) {
 //             mkdir($tempDir, 0755, true);
 //         }
-        
+
 //         $tempFiles = []; // Track temp files for cleanup
 //         $pageCount = 0; // Track total pages manually
-        
+
 //         foreach ($documents as $doc) {
 //             $filePath = $this->resolveDocumentAbsolutePath($doc);
-            
+
 //             // Check if file exists
 //             if (!$filePath) {
 //                 \Log::warning("File not found for document ID: {$doc->id}", [
@@ -1190,25 +1347,25 @@ public function delete_setting_document(SettingDocument $document)
 //                 ]);
 //                 continue;
 //             }
-            
+
 //             $fileType = strtolower($doc->file_type);
-            
+
 //             // HANDLE PDF
 //             if ($fileType == 'pdf') {
 //                 try {
 //                     $sourceFile = $this->preparePdfForFpdi($pdf, $filePath, $tempFiles, $tempDir);
 //                     $totalPages = $pdf->setSourceFile($sourceFile);
 //                     $pageCount += $totalPages;
-                    
+
 //                     for ($i = 1; $i <= $totalPages; $i++) {
 //                         $template = $pdf->importPage($i);
 //                         $size = $pdf->getTemplateSize($template);
-                        
+
 //                         // Use A4 as fallback if size is invalid
 //                         if ($size['width'] <= 0 || $size['height'] <= 0) {
 //                             $size = ['width' => 210, 'height' => 297, 'orientation' => 'P'];
 //                         }
-                        
+
 //                         $pdf->AddPage($size['orientation'], [$size['width'], $size['height']]);
 //                         $pdf->useTemplate($template);
 //                     }
@@ -1217,7 +1374,7 @@ public function delete_setting_document(SettingDocument $document)
 //                     continue;
 //                 }
 //             }
-            
+
 //             // HANDLE IMAGES
 //             elseif (in_array($fileType, ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'])) {
 //                 try {
@@ -1226,36 +1383,36 @@ public function delete_setting_document(SettingDocument $document)
 //                         \Log::warning("Invalid image file: {$filePath}");
 //                         continue;
 //                     }
-                    
+
 //                     list($width, $height) = $imageInfo;
-                    
+
 //                     // Convert pixels to mm (DPI: 72)
 //                     $widthMM = $width * 0.352777;
 //                     $heightMM = $height * 0.352777;
-                    
+
 //                     // Calculate orientation
 //                     $orientation = ($widthMM > $heightMM) ? 'L' : 'P';
-                    
+
 //                     // Scale down if image is too large (max A3 size: 420x297mm)
 //                     $maxWidth = 420;
 //                     $maxHeight = 297;
-                    
+
 //                     if ($widthMM > $maxWidth || $heightMM > $maxHeight) {
 //                         $scale = min($maxWidth / $widthMM, $maxHeight / $heightMM);
 //                         $widthMM = $widthMM * $scale;
 //                         $heightMM = $heightMM * $scale;
 //                     }
-                    
+
 //                     $pdf->AddPage($orientation, [$widthMM, $heightMM]);
 //                     $pdf->Image($filePath, 0, 0, $widthMM, $heightMM);
 //                     $pageCount++; // Increment page count for image
-                    
+
 //                 } catch (\Exception $e) {
 //                     \Log::error("Error processing image {$doc->id}: " . $e->getMessage());
 //                     continue;
 //                 }
 //             }
-            
+
 //             // HANDLE WORD DOCUMENTS (DOC, DOCX)
 //             elseif (in_array($fileType, ['doc', 'docx'])) {
 //                 try {
@@ -1263,44 +1420,44 @@ public function delete_setting_document(SettingDocument $document)
 //                     $convertedPdfPath = $tempDir . '/' . uniqid() . '.pdf';
 //                     DocumentConverter::convertWordToPdf($filePath, $convertedPdfPath);
 //                     $tempFiles[] = $convertedPdfPath;
-                    
+
 //                     // Add converted PDF pages to final PDF
 //                     $totalPages = $pdf->setSourceFile($convertedPdfPath);
 //                     $pageCount += $totalPages;
-                    
+
 //                     for ($i = 1; $i <= $totalPages; $i++) {
 //                         $template = $pdf->importPage($i);
 //                         $size = $pdf->getTemplateSize($template);
-                        
+
 //                         if ($size['width'] <= 0 || $size['height'] <= 0) {
 //                             $size = ['width' => 210, 'height' => 297, 'orientation' => 'P'];
 //                         }
-                        
+
 //                         $pdf->AddPage($size['orientation'], [$size['width'], $size['height']]);
 //                         $pdf->useTemplate($template);
 //                     }
-                    
+
 //                 } catch (\Exception $e) {
 //                     \Log::error("Error processing Word document {$doc->id}: " . $e->getMessage());
 //                     continue;
 //                 }
 //             }
-            
+
 //             // HANDLE TEXT FILES
 //             elseif (in_array($fileType, ['txt', 'rtf'])) {
 //                 try {
 //                     $content = file_get_contents($filePath);
-                    
+
 //                     // Create a simple PDF page with text
 //                     $pdf->AddPage();
 //                     $pdf->SetFont('Helvetica', '', 12);
 //                     $pdf->SetXY(10, 10);
-                    
+
 //                     // Split text into lines
 //                     $lines = explode("\n", wordwrap($content, 80, "\n"));
 //                     $y = 10;
 //                     $linesPerPage = 0;
-                    
+
 //                     foreach ($lines as $line) {
 //                         if ($y > 280) { // Page limit reached
 //                             $pdf->AddPage();
@@ -1311,45 +1468,45 @@ public function delete_setting_document(SettingDocument $document)
 //                         $y += 10;
 //                         $linesPerPage++;
 //                     }
-                    
+
 //                     // Calculate pages for text content (approximate)
 //                     $textPages = ceil(count($lines) / 65); // ~65 lines per page
 //                     $pageCount += max(1, $textPages);
-                    
+
 //                 } catch (\Exception $e) {
 //                     \Log::error("Error processing text file {$doc->id}: " . $e->getMessage());
 //                     continue;
 //                 }
 //             }
 //         }
-        
+
 //         // Check if PDF has any pages
 //         if ($pageCount === 0) {
 //             // Cleanup temp files
 //             $this->cleanupTempFiles($tempFiles, $tempDir);
-            
+
 //             return response()->json([
 //                 'status' => false,
 //                 'message' => 'No valid pages were found to merge.'
 //             ], 400);
 //         }
-        
+
 //         // Generate unique filename
 //         $fileName = 'merged_' . uniqid() . '_' . time() . '.pdf';
 //         $storagePath = 'merged_documents/' . date('Y/m');
 //         $fullPath = public_path('storage/' . $storagePath);
-        
+
 //         // Create directory if it doesn't exist
 //         if (!file_exists($fullPath)) {
 //             mkdir($fullPath, 0755, true);
 //         }
-        
+
 //         $outputPath = $fullPath . '/' . $fileName;
 //         $pdf->Output($outputPath, 'F');
-        
+
 //         // Cleanup temp files
 //         $this->cleanupTempFiles($tempFiles, $tempDir);
-        
+
 //         return response()->json([
 //             'status' => true,
 //             'message' => 'Documents merged successfully',
@@ -1358,13 +1515,13 @@ public function delete_setting_document(SettingDocument $document)
 //             'document_count' => $documents->count(),
 //             // 'supported_types' => ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'doc', 'docx', 'txt', 'rtf']
 //         ]);
-        
+
 //     } catch (\Exception $e) {
 //         \Log::error('Merge documents error: ' . $e->getMessage(), [
 //             'user_id' => auth()->id(),
 //             'trace' => $e->getTraceAsString()
 //         ]);
-        
+
 //         return response()->json([
 //             'status' => false,
 //             'message' => 'Failed to merge documents: ' . $e->getMessage()
@@ -1382,7 +1539,7 @@ private function cleanupTempFiles($tempFiles, $tempDir)
             @unlink($file);
         }
     }
-    
+
     if (file_exists($tempDir)) {
         @rmdir($tempDir);
     }
@@ -1816,6 +1973,8 @@ private function buildDocumentFieldContext(array $sessionData, $signedAt): array
             'contractor_name' => optional($company)->name,
             'company_phone' => optional($user)->phone,
             'company_email' => optional($user)->email,
+            'user_name' => optional($user)->name ?: trim((optional($user)->first_name ?: '') . ' ' . (optional($user)->last_name ?: '')),
+            'esign_user' => $this->resolveUserSignatureDisplayText($user),
             'license_number' => optional($company)->license_no,
             'license_no' => optional($company)->license_no,
             'address' => optional($customer)->address,
@@ -1861,11 +2020,17 @@ private function overlayDocumentFields(Fpdi $pdf, ?SettingDocument $document, in
             $signaturePath = $this->resolveFieldSignaturePath($document, $field, $fieldContext);
             if ($signaturePath && file_exists($signaturePath)) {
                 $signatureImagePath = $this->prepareTransparentSignatureForPacket($signaturePath, $tempFiles, $tempDir);
-                $pdf->Image($signatureImagePath, $rect['x'] + 1, $rect['y'] + 1, max(1, $rect['width'] - 2), max(1, $rect['height'] - 2), 'PNG');
+                $this->drawSignedSignatureBadge($pdf, $rect, $signatureImagePath, $this->signatureReference($document));
+            } elseif ($this->isUserSignatureField($field)) {
+                $value = $this->resolveDocumentFieldValue($field, $fieldContext, $document->id);
+                if ($value !== '') {
+                    $this->drawSignedSignatureBadge($pdf, $rect, null, $this->signatureReference($document), $value);
+                }
             }
             continue;
         }
 
+        $this->drawDocumentFieldUnderline($pdf, $rect);
         $value = $this->resolveDocumentFieldValue($field, $fieldContext, $document->id);
         if ($value === '') {
             continue;
@@ -1877,6 +2042,65 @@ private function overlayDocumentFields(Fpdi $pdf, ?SettingDocument $document, in
         $pdf->SetXY($rect['x'] + 1, $rect['y'] + 1);
         $pdf->MultiCell(max(1, $rect['width'] - 2), max(3, $fontSize * 0.45), utf8_decode($value), 0, 'C');
     }
+}
+
+private function drawSignedSignatureBadge(Fpdi $pdf, array $rect, ?string $signatureImagePath, string $reference, ?string $signatureText = null): void
+{
+    $badgeX = $rect['x'] + max(0.5, $rect['width'] * 0.02);
+    $badgeY = $rect['y'] + max(1.2, $rect['height'] * 0.08);
+    $badgeWidth = max(12, $rect['width'] * 0.62);
+    $badgeHeight = max(8, $rect['height'] * 0.82);
+
+    $pdf->SetFillColor(255, 255, 255);
+    $pdf->SetDrawColor(90, 79, 255);
+    $pdf->SetLineWidth(0.6);
+    $pdf->Rect($badgeX, $badgeY, $badgeWidth, $badgeHeight, 'DF');
+
+    $label = 'Signed by:';
+    $pdf->SetFont('Helvetica', 'B', max(5.5, min(7.5, $badgeHeight * 0.16)));
+    $labelWidth = min($badgeWidth * 0.48, max(14, $pdf->GetStringWidth($label) + 3));
+    $labelX = $badgeX + min(8, $badgeWidth * 0.16);
+    $labelY = $badgeY - 1.1;
+    $pdf->SetFillColor(255, 255, 255);
+    $pdf->Rect($labelX - 0.7, $labelY - 0.2, $labelWidth, 2.8, 'F');
+    $pdf->SetTextColor(18, 27, 38);
+    $pdf->SetXY($labelX, $labelY);
+    $pdf->Cell($labelWidth, 2.8, $label, 0, 0, 'L');
+
+    if ($signatureImagePath && file_exists($signatureImagePath)) {
+        $pdf->Image(
+            $signatureImagePath,
+            $badgeX + 2.5,
+            $badgeY + max(2, $badgeHeight * 0.16),
+            $badgeWidth - 5,
+            max(4, $badgeHeight * 0.48),
+            'PNG'
+        );
+    } elseif ($signatureText) {
+        $pdf->SetFont('Helvetica', 'I', max(8, min(14, $badgeHeight * 0.32)));
+        $pdf->SetTextColor(18, 27, 38);
+        $pdf->SetXY($badgeX + 2.5, $badgeY + max(2, $badgeHeight * 0.22));
+        $pdf->Cell($badgeWidth - 5, max(4, $badgeHeight * 0.35), utf8_decode($signatureText), 0, 0, 'L');
+    }
+
+    $pdf->SetFont('Helvetica', 'B', max(4.5, min(6.2, $badgeHeight * 0.13)));
+    $pdf->SetTextColor(75, 85, 99);
+    $pdf->SetXY($badgeX + 2.5, $badgeY + $badgeHeight - 3.2);
+    $pdf->Cell($badgeWidth - 5, 2.5, strtoupper($reference) . '...', 0, 0, 'L');
+}
+
+private function signatureReference(SettingDocument $document): string
+{
+    return substr(strtoupper(sha1((string) $document->id . '|' . (string) $document->signed_at)), 0, 14);
+}
+
+private function drawDocumentFieldUnderline(Fpdi $pdf, array $rect): void
+{
+    $y = $rect['y'] + $rect['height'] - 0.7;
+
+    $pdf->SetDrawColor(18, 27, 38);
+    $pdf->SetLineWidth(0.25);
+    $pdf->Line($rect['x'], $y, $rect['x'] + $rect['width'], $y);
 }
 
 private function resolveDocumentFieldRect(array $field, float $pageWidth, float $pageHeight): array
@@ -1999,9 +2223,50 @@ private function resolveFieldSignaturePath(SettingDocument $document, array $fie
     $paths = data_get($fieldContext, 'field_signature_paths.' . $document->id, []);
     $fieldId = (string) ($field['id'] ?? '');
     $fieldKey = (string) ($field['key'] ?? '');
-    $relativePath = $paths[$fieldId] ?? $paths[$fieldKey] ?? $document->signature_path;
+    $relativePath = $paths[$fieldId] ?? $paths[$fieldKey] ?? null;
+
+    if ($this->isUserSignatureField($field)) {
+        $relativePath = $relativePath ?: $this->resolveUserSignatureRelativePath($fieldContext['user'] ?? null);
+
+        return $relativePath ? storage_path('app/public/' . $relativePath) : null;
+    }
+
+    $relativePath = $relativePath ?: $document->signature_path;
 
     return $relativePath ? storage_path('app/public/' . $relativePath) : null;
+}
+
+private function isUserSignatureField(array $field): bool
+{
+    $key = Str::slug((string) ($field['key'] ?? $field['name'] ?? $field['label'] ?? ''), '_');
+
+    return in_array($key, ['esign_user', 'user_signature', 'contractor_signature'], true);
+}
+
+private function resolveUserSignatureRelativePath($user): ?string
+{
+    $sign = trim((string) optional($user)->sign);
+
+    if ($sign === '' || Str::startsWith($sign, 'data:')) {
+        return null;
+    }
+
+    $path = parse_url($sign, PHP_URL_PATH) ?: $sign;
+    $path = ltrim(str_ireplace(['storage/app/public/', 'storage/app/', '/storage/', 'storage/'], '', $path), '/\\');
+
+    return Storage::disk('public')->exists($path) ? $path : null;
+}
+
+private function resolveUserSignatureDisplayText($user): string
+{
+    $name = trim((string) (optional($user)->name ?: trim((optional($user)->first_name ?: '') . ' ' . (optional($user)->last_name ?: ''))));
+    $sign = trim((string) optional($user)->sign);
+
+    if ($sign === '' || $this->resolveUserSignatureRelativePath($user) || filter_var($sign, FILTER_VALIDATE_URL) || Str::startsWith($sign, 'data:')) {
+        return $name;
+    }
+
+    return $sign;
 }
 
 private function appendSignatureSummaryPage(Fpdi $pdf, SettingDocument $document, string $token, ?string $recipientEmail, string $signerName, $signedAt, array &$tempFiles, string $tempDir)
@@ -2194,7 +2459,7 @@ private function documentHasSignatureFields(SettingDocument $document): bool
 {
     return collect($this->normalizeDocumentFields($document->fields ?? []))
         ->contains(function ($field) {
-            return ($field['type'] ?? null) === 'signature';
+            return ($field['type'] ?? null) === 'signature' && !$this->isUserSignatureField($field);
         });
 }
 
@@ -2308,12 +2573,20 @@ private function resolveSignedPacketForToken(string $token): ?array
 
 public function sendDocumentsByEmail(Request $request)
 {
+    if (!auth()->check()) {
+        return response()->json([
+            'status'  => false,
+            'message' => 'Unauthenticated'
+        ], 401);
+    }
+
     $validator = Validator::make($request->all(), [
         'document_ids'   => 'nullable|required_without:estimate_id|array|min:1',
         'document_ids.*' => 'integer|distinct|exists:setting_documents,id',
         'estimate_id'    => 'integer|exists:estimates,id',
         'estimate_fields' => 'nullable',
         'email'          => 'required|email',
+        'description'    => 'nullable|string',
     ]);
 
     if ($validator->fails()) {
@@ -2323,114 +2596,217 @@ public function sendDocumentsByEmail(Request $request)
         ], 422);
     }
 
-    $user = auth()->user();
-    $documentIds = collect($request->input('document_ids', []))
-        ->map(function ($documentId) {
-            return (int) $documentId;
-        })
-        ->values()
-        ->all();
+    $failureStage = 'prepare_documents';
 
-    $documents = $this->getOrderedSigningDocuments($documentIds)
-        ->where('user_id', $user->id)
-        ->where('company_id', $user->company_id)
-        ->values();
+    try {
+        $user = auth()->user();
+        $description = trim((string) $request->input('description', ''));
+        $description = $description !== '' ? $description : null;
+        $documentIds = collect($request->input('document_ids', []))
+            ->map(function ($documentId) {
+                return (int) $documentId;
+            })
+            ->values()
+            ->all();
 
-    if ($documents->count() !== count($documentIds)) {
-        return response()->json([
-            'status'  => false,
-            'message' => 'Some selected documents were not found.'
-        ], 404);
-    }
-
-    if ($documents->isEmpty() && !$request->filled('estimate_id')) {
-        return response()->json([
-            'status'  => false,
-            'message' => 'No matching documents found.'
-        ], 404);
-    }
-
-    $estimateDocumentId = null;
-
-    if ($request->filled('estimate_id')) {
-        $estimate = Estimate::where('id', $request->estimate_id)
+        $documents = $this->getOrderedSigningDocuments($documentIds)
+            ->where('user_id', $user->id)
             ->where('company_id', $user->company_id)
-            ->first();
-            // dd($estimate);
+            ->values();
 
-        if ($estimate) {
-            $storedFilename = 'estimate_' . $estimate->id . '_' . time() . '.pdf';
-            $storedPath = 'setting_documents/generated_estimates/' . date('Y/m') . '/' . $storedFilename;
-            Storage::disk('public')->put(
-                $storedPath,
-                $this->buildEstimatePreviewPdf($estimate, $user, app(EstimateService::class))
-            );
-
-            $estimateDocument = SettingDocument::create([
-                'user_id' => $user->id,
-                'company_id' => $user->company_id,
-                'document_type' => 'estimate',
-                'file_path' => $storedPath,
-                'file_type' => 'pdf',
-                'document_name' => 'Estimate ' . ($estimate->key ?: $estimate->id),
-                'signature_required' => false,
-                'fields' => [],
-            ]);
-        } else {
-            $estimateDocument = SettingDocument::where('id', $request->estimate_id)
-                ->where('user_id', $user->id)
-                ->where('company_id', $user->company_id)
-                ->where('document_type', 'estimate')
-                ->first();
-
-            if ($estimateDocument && $request->has('estimate_fields')) {
-                $estimateDocument->fields = $this->normalizeDocumentFields($request->input('estimate_fields'));
-                $estimateDocument->save();
-            }
-        }
-
-        if (!$estimateDocument) {
+        if ($documents->count() !== count($documentIds)) {
             return response()->json([
                 'status'  => false,
-                'message' => 'Estimate was not found. Send the estimate id, or an existing generated estimate document id.'
+                'message' => 'Some selected documents were not found.'
             ], 404);
         }
 
-        // if (!in_array($estimateDocument->id, $documentIds)) {
-        //     $documentIds[] = $estimateDocument->id;
-        //     $documents->push($estimateDocument);
-        // }
-
-        if (!in_array($estimateDocument->id, $documentIds)) {
-            array_unshift($documentIds, $estimateDocument->id);  // prepend instead of append
-            $documents->prepend($estimateDocument);              // prepend instead of push
+        if ($documents->isEmpty() && !$request->filled('estimate_id')) {
+            return response()->json([
+                'status'  => false,
+                'message' => 'No matching documents found.'
+            ], 404);
         }
 
-        $estimateDocumentId = $estimateDocument->id;
+        $estimateDocumentId = null;
+
+        if ($request->filled('estimate_id')) {
+            $failureStage = 'resolve_estimate_document';
+            $estimate = Estimate::where('id', $request->estimate_id)
+                ->where('company_id', $user->company_id)
+                ->first();
+                // dd($estimate);
+
+            if ($estimate) {
+                $failureStage = 'generate_estimate_document';
+                $storedFilename = 'estimate_' . $estimate->id . '_' . time() . '.pdf';
+                $storedPath = 'setting_documents/generated_estimates/' . date('Y/m') . '/' . $storedFilename;
+                Storage::disk('public')->put(
+                    $storedPath,
+                    $this->buildEstimatePreviewPdf($estimate, $user, app(EstimateService::class))
+                );
+
+                $estimateDocument = SettingDocument::create([
+                    'user_id' => $user->id,
+                    'company_id' => $user->company_id,
+                    'document_type' => 'estimate',
+                    'file_path' => $storedPath,
+                    'file_type' => 'pdf',
+                    'document_name' => 'Estimate ' . ($estimate->key ?: $estimate->id),
+                    'signature_required' => false,
+                    'fields' => $request->has('estimate_fields')
+                        ? $this->normalizeDocumentFields($request->input('estimate_fields'))
+                        : [],
+                ]);
+            } else {
+                $estimateDocument = SettingDocument::where('id', $request->estimate_id)
+                    ->where('user_id', $user->id)
+                    ->where('company_id', $user->company_id)
+                    ->where('document_type', 'estimate')
+                    ->first();
+
+                if ($estimateDocument && $request->has('estimate_fields')) {
+                    $estimateDocument->fields = $this->normalizeDocumentFields($request->input('estimate_fields'));
+                    $estimateDocument->save();
+                }
+            }
+
+            if (!$estimateDocument) {
+                return response()->json([
+                    'status'  => false,
+                    'message' => 'Estimate was not found. Send the estimate id, or an existing generated estimate document id.'
+                ], 404);
+            }
+
+            // if (!in_array($estimateDocument->id, $documentIds)) {
+            //     $documentIds[] = $estimateDocument->id;
+            //     $documents->push($estimateDocument);
+            // }
+
+            if (!in_array($estimateDocument->id, $documentIds)) {
+                array_unshift($documentIds, $estimateDocument->id);  // prepend instead of append
+                $documents->prepend($estimateDocument);              // prepend instead of push
+            }
+
+            $estimateDocumentId = $estimateDocument->id;
+        }
+
+        // Generate a unique signing token
+        $token = \Str::uuid();
+
+        // Store token against document ids
+        $failureStage = 'store_signing_link';
+        $sentAt = now();
+        $expiresAt = $sentAt->copy()->addWeek();
+        $this->putSigningSession($token, [
+            'document_ids' => $documentIds,
+            'email'        => $request->email,
+            'user_id'      => $user->id,
+            'company_id'   => $user->company_id,
+            'estimate_id'  => $request->filled('estimate_id') ? (int) $request->estimate_id : null,
+            'message'      => $description,
+            'sent_at'      => $sentAt->toDateTimeString(),
+            'expires_at'   => $expiresAt->toDateTimeString(),
+        ]);
+
+        $signingLink = url('/document/sign/' . $token);
+
+        $failureStage = 'send_email';
+        Mail::to($request->email)->send(new SettingDocumentsMail($documents, $signingLink, $description));
+
+        return response()->json([
+            'status'  => true,
+            'message' => 'Documents sent successfully to ' . $request->email,
+            'signing_link' => $signingLink,
+            // 'document_ids' => $documentIds,
+            // 'estimate_document_id' => $estimateDocumentId,
+        ]);
+    } catch (\Throwable $exception) {
+        \Log::error('Failed to send documents for e-signature', [
+            'stage' => $failureStage,
+            'message' => $exception->getMessage(),
+            'user_id' => optional(auth()->user())->id,
+            'company_id' => optional(auth()->user())->company_id,
+            'email' => $request->input('email'),
+            'document_ids' => $request->input('document_ids', []),
+            'estimate_id' => $request->input('estimate_id'),
+            'mail_mailer' => config('mail.default'),
+            'mail_host' => config('mail.mailers.smtp.host'),
+            'trace' => $exception->getTraceAsString(),
+        ]);
+
+        $message = $failureStage === 'send_email'
+            ? 'Unable to send email. Please check mail configuration and try again.'
+            : 'Unable to prepare documents. Please try again.';
+
+        return response()->json([
+            'status' => false,
+            'message' => $message,
+            'stage' => $failureStage,
+            'error' => config('app.debug') ? $exception->getMessage() : null,
+        ], 500);
+    }
+}
+
+public function signingCompletionDetails($token)
+{
+    $data = $this->getSigningSession($token);
+
+    if (!$data) {
+        return response()->json([
+            'status' => false,
+            'message' => 'Link expired or invalid.',
+        ], 404);
     }
 
-    // Generate a unique signing token
-    $token = \Str::uuid();
+    $documents = $this->resolveSigningDocuments($data);
 
-    // Store token against document ids
-    $this->putSigningSession($token, [
-        'document_ids' => $documentIds,
-        'email'        => $request->email,
-        'user_id'      => $user->id,
-        'company_id'   => $user->company_id,
-        'estimate_id'  => $request->filled('estimate_id') ? (int) $request->estimate_id : null,
-    ]);
+    if ($documents->isEmpty()) {
+        return response()->json([
+            'status' => false,
+            'message' => 'No documents found for this link.',
+        ], 404);
+    }
 
-    $signingLink = url('/document/sign/' . $token);
-
-    Mail::to($request->email)->send(new SettingDocumentsMail($documents, $signingLink));
+    $sender = User::find($data['user_id'] ?? null);
+    $sentAt = $this->parseSigningDate($data['sent_at'] ?? null);
+    $expiresAt = $this->parseSigningDate($data['expires_at'] ?? null);
+    $isCompleted = !empty($data['signed_packet_path']) || !empty($data['completed_at']);
 
     return response()->json([
-        'status'  => true,
-        'message' => 'Documents sent successfully to ' . $request->email,
-        'signing_link' => $signingLink,
-        // 'document_ids' => $documentIds,
-        // 'estimate_document_id' => $estimateDocumentId,
+        'status' => true,
+        'message' => $isCompleted ? 'Signing details fetched successfully.' : 'Signing link details fetched successfully.',
+        'data' => [
+            // 'token' => $token,
+            // 'completed' => $isCompleted,
+            // 'title' => "You're Done! Want To Sign Another Document?",
+            // 'document_summary' => $this->formatSigningDocumentSummary($documents),
+            // 'from' => [
+            //     'id' => optional($sender)->id,
+            //     'name' => $this->formatSigningSenderName($sender),
+            //     'email' => optional($sender)->email,
+            // ],
+            'recipient_email' => $data['email'] ?? null,
+            'expires_on' => $this->formatSigningDatePayload($expiresAt, 'm/d/Y'),
+            'sent_on' => $this->formatSigningDatePayload($sentAt, 'n/j/Y g:i A T'),
+            'message_text' => $data['message'] ?? null,
+            'documents' => $documents->map(function ($document) use ($token) {
+                return [
+                    'id' => $document->id,
+                    'name' => $document->document_name,
+                    'file_type' => $document->file_type ?: strtolower(pathinfo((string) $document->file_path, PATHINFO_EXTENSION)),
+                    'preview_url' => url('/document/sign/' . $token . '/preview/' . $document->id),
+                    'file_url' => url('/document/sign/' . $token . '/file/' . $document->id),
+                    'signed_at' => optional($document->signed_at)->toIso8601String(),
+                    'signature_required' => (bool) $document->signature_required,
+                ];
+            })->values(),
+            'actions' => [
+                'sign_another_url' => url('/document/sign/' . $token),
+                'view_url' => url('/document/sign/' . $token . '/view'),
+                'download_url' => url('/document/sign/' . $token . '/download'),
+            ],
+        ],
     ]);
 }
 
@@ -2454,6 +2830,8 @@ public function showSignDocument($token)
     }
 
     $documents = $this->resolveSigningDocuments($data);
+    $signingUser = User::find($data['user_id'] ?? null);
+    $userSignaturePath = $this->resolveUserSignatureRelativePath($signingUser);
 
     if ($documents->isEmpty()) {
         return view('document.expired');
@@ -2476,7 +2854,7 @@ public function showSignDocument($token)
         ->flatMap(function ($document) {
             $signatureFields = collect($this->normalizeDocumentFields($document->fields ?? []))
                 ->filter(function ($field) {
-                    return ($field['type'] ?? null) === 'signature';
+                    return ($field['type'] ?? null) === 'signature' && !$this->isUserSignatureField($field);
                 })
                 ->values();
 
@@ -2502,6 +2880,8 @@ public function showSignDocument($token)
         'recipientEmail' => $data['email'] ?? null,
         'requiredDocumentIds' => $requiredDocumentIds,
         'requiredSignatureTargets' => $requiredSignatureTargets,
+        'prefilledUserSignatureUrl' => $userSignaturePath ? asset('storage/' . $userSignaturePath) : (filter_var((string) optional($signingUser)->sign, FILTER_VALIDATE_URL) ? optional($signingUser)->sign : null),
+        'prefilledUserSignatureText' => $this->resolveUserSignatureDisplayText($signingUser),
     ]);
 }
 
@@ -2794,7 +3174,7 @@ public function submitSignature(Request $request, $token)
     foreach ($requiredDocuments as $document) {
         $signatureFields = collect($this->normalizeDocumentFields($document->fields ?? []))
             ->filter(function ($field) {
-                return ($field['type'] ?? null) === 'signature';
+                return ($field['type'] ?? null) === 'signature' && !$this->isUserSignatureField($field);
             });
 
         if ($signatureFields->isNotEmpty()) {
@@ -2852,7 +3232,7 @@ public function submitSignature(Request $request, $token)
             }
 
             foreach ($this->normalizeDocumentFields($document->fields ?? []) as $field) {
-                if (($field['type'] ?? null) !== 'signature') {
+                if (($field['type'] ?? null) !== 'signature' || $this->isUserSignatureField($field)) {
                     continue;
                 }
 
@@ -2925,6 +3305,63 @@ public function downloadSignedDocument($token)
     return response()->download($signedPacket['absolute_path'], basename($signedPacket['absolute_path']), [
         'Content-Type' => 'application/pdf',
     ]);
+}
+
+
+private function parseSigningDate($value): ?\Illuminate\Support\Carbon
+{
+    if (empty($value)) {
+        return null;
+    }
+
+    try {
+        return \Illuminate\Support\Carbon::parse($value);
+    } catch (\Throwable $exception) {
+        return null;
+    }
+}
+
+private function formatSigningDatePayload(?\Illuminate\Support\Carbon $date, string $displayFormat): ?array
+{
+    if (!$date) {
+        return null;
+    }
+
+    return [
+        'display' => $date->format($displayFormat),
+        'iso' => $date->toIso8601String(),
+    ];
+}
+
+private function formatSigningDocumentSummary($documents): string
+{
+    $names = $documents
+        ->pluck('document_name')
+        ->filter()
+        ->values();
+
+    if ($names->isEmpty()) {
+        return 'Complete with documents';
+    }
+
+    $summary = 'Complete with ' . $names->take(2)->implode(', ');
+
+    if ($names->count() > 2) {
+        $summary .= ', ...';
+    }
+
+    return $summary;
+}
+
+private function formatSigningSenderName(?User $user): ?string
+{
+    if (!$user) {
+        return null;
+    }
+
+    $name = trim((string) ($user->name ?: trim(($user->first_name ?: '') . ' ' . ($user->last_name ?: ''))));
+
+    return $name !== '' ? $name : $user->email;
 }
 
 

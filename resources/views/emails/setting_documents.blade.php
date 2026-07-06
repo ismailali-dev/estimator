@@ -1,78 +1,96 @@
+@php
+    $firstDocument = $documents instanceof \Illuminate\Support\Collection ? $documents->first() : collect($documents ?? [])->first();
+    $documentTitle = data_get($firstDocument, 'document_name')
+        ?: data_get($firstDocument, 'name')
+        ?: 'Document';
+    $senderName = config('mail.from.name') ?: 'Contracts';
+    $senderEmail = config('mail.from.address');
+@endphp
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>Document Review</title>
-<style>
-    body {
-        margin: 0;
-        font-family: Arial, sans-serif;
-        background-color: #f5f5f5;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        height: 100vh;
-    }
-
-    .card {
-        background: #ffffff;
-        padding: 40px 30px;
-        text-align: center;
-        border-radius: 8px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        width: 350px;
-    }
-
-    .icon {
-        margin-bottom: 20px;
-    }
-
-    .icon svg {
-        width: 40px;
-        height: 40px;
-        stroke: #333;
-    }
-
-    .text {
-        font-size: 16px;
-        color: #333;
-        margin-bottom: 25px;
-    }
-
-    .btn {
-        display: inline-block;
-        padding: 12px 25px;
-        font-size: 14px;
-        color: #fff;
-        text-decoration: none;
-        border-radius: 6px;
-        background: linear-gradient(90deg, #3b2cff, #1f00ff);
-        transition: 0.3s ease;
-    }
-
-    .btn:hover {
-        opacity: 0.9;
-    }
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document Review</title>
 </head>
-<body>
+<body style="margin:0; padding:0; background:#242424; font-family:Arial, Helvetica, sans-serif; color:#f3f3f3;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#242424; margin:0; padding:0;">
+        <tr>
+            <td align="center" style="padding:28px 16px 40px;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:680px; margin:0 auto;">
+                    <!-- <tr>
+                        <td style="padding:0 0 16px; color:#f2f2f2; font-size:16px; line-height:24px; font-weight:700;">
+                            Here is your document: {{ $documentTitle }}
+                        </td>
+                    </tr> -->
 
-<div class="card">
-    <div class="icon">
-        <!-- Pencil SVG Icon -->
-        <svg fill="none" viewBox="0 0 24 24" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round"
-                d="M15.232 5.232l3.536 3.536M9 11l6.364-6.364a2 2 0 112.828 2.828L11.828 13.828a4 4 0 01-1.414.94l-3.414 1.138 1.138-3.414A4 4 0 019 11z" />
-        </svg>
-    </div>
+                    <tr>
+                        <td align="center" style="background:rgb(201, 218, 43); border-radius:16px; padding:30px 24px 38px;">
+                            <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center">
+                                <tr>
+                                    <td align="center" style="padding-bottom:24px;">
+                                        <div style="width:52px; height:52px; border-radius:8px; background:#ffffff; color:#202124; font-size:30px; line-height:52px; font-weight:700;">
+                                            &#10003;
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td align="center" style="padding-bottom:26px; color:#2d2430; font-size:17px; line-height:24px;">
+                                        Your Document Is Ready
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td align="center">
+                                        <a href="{{ $signingLink }}" style="display:inline-block; background: #d1ff61; border-radius:7px; color:#161021; font-size:15px; line-height:20px; font-weight:700; text-decoration:none; padding:14px 28px;">
+                                            View Document
+                                        </a>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
 
-    <div class="text">
-        Contracts sent you a document to review and sign.
-    </div>
+                    <tr>
+                        <td style="padding:32px 0 0;">
+                            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border:1px solid #9d9d9d; border-radius:16px;">
+                                <tr>
+                                    <td style="padding:34px 50px 38px; color:#d9d9d9; font-size:15px; line-height:24px;">
+                                        <div style="font-size:16px; line-height:22px; font-weight:700; color:#f3f3f3;">
+                                            {{ $senderName }}
+                                        </div>
+                                        @if($senderEmail)
+                                            <div style="padding-top:2px;">
+                                                <a href="mailto:{{ $senderEmail }}" style="color:#b985ff; text-decoration:underline;">{{ $senderEmail }}</a>
+                                            </div>
+                                        @endif
 
-    <a href="{{ $signingLink }}" class="btn">Review Document</a>
-</div>
+                                        <div style="height:30px; line-height:30px;">&nbsp;</div>
 
+                                        <div>
+                                            {{ $senderName }} has sent you a document to review and sign electronically.
+                                        </div>
+
+                                        @if(!empty($description))
+                                            <div style="height:12px; line-height:12px;">&nbsp;</div>
+                                            <div>
+                                                {{ $description }}
+                                            </div>
+                                        @endif
+
+                                        <div style="height:16px; line-height:16px;">&nbsp;</div>
+
+                                        <!-- <div>
+                                            Select View Document to securely review and complete your documents.
+                                        </div> -->
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
 </body>
 </html>
 
