@@ -23,6 +23,7 @@ use setasign\Fpdi\Fpdi;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\SettingDocumentsMail;
 use App\Services\EstimateService;
+use App\Services\DownloadEmailService;
 use App\Models\ProfitBudgetEstimateSetting;
 use Barryvdh\DomPDF\Facade\Pdf;
 
@@ -926,31 +927,63 @@ public function getAllDocuments(Request $request, $estimate)
     $user = auth()->user();
     $estimate = $this->resolveEstimateForDocumentRequest($estimate, $user);
 
-    if (!$estimate) {
+    if (!$estimate || (int) $estimate->user_id !== (int) $user->id) {
         return response()->json([
             'status'  => false,
             'message' => 'Estimate not found'
         ], 404);
     }
 
-    $documents = SettingDocument::where('company_id', $user->company_id)
-        ->where(function ($query) use ($estimate, $user) {
-            $query->where(function ($estimateQuery) use ($estimate) {
-                $estimateQuery->where('estimate_id', $estimate->id)
-                    ->whereIn('document_type', ['estimate_upload', 'sub_estimate_upload']);
-            })->orWhere(function ($globalQuery) use ($user) {
-                $globalQuery->where('user_id', $user->id)
-                    ->whereNull('estimate_id')
-                    ->whereNotIn('document_type', ['estimate', 'estimate_upload', 'sub_estimate_upload']);
-            });
+    $estimateDocument = SettingDocument::where('company_id', $user->company_id)
+        ->where('user_id', $user->id)
+        ->where('document_type', 'estimate')
+        ->where(function ($query) use ($estimate) {
+            $query->where('estimate_id', $estimate->id)
+                ->orWhere(function ($legacyGeneratedEstimateQuery) use ($estimate) {
+                    $legacyGeneratedEstimateQuery->whereNull('estimate_id')
+                        ->where('file_path', 'like', '%estimate_' . $estimate->id . '_%');
+                });
         })
+        ->orderByDesc('id')
+        ->first();
+
+    $estimateDocuments = SettingDocument::where('company_id', $user->company_id)
+        ->where('user_id', $user->id)
+        ->where('estimate_id', $estimate->id)
+        ->whereIn('document_type', ['estimate_upload', 'sub_estimate_upload', 'material_list'])
         ->orderBy('sort_order')
         ->orderBy('id')
         ->get();
 
+    $uploadedFileDocuments = SettingDocument::where('company_id', $user->company_id)
+        ->where('user_id', $user->id)
+        ->whereNull('estimate_id')
+        ->where('document_type', 'file')
+        ->orderBy('sort_order')
+        ->orderBy('id')
+        ->get();
+
+    $documents = collect();
+
+    if ($estimateDocument) {
+        $documents->push($estimateDocument);
+    }
+
+    $documents = $documents
+        ->merge($estimateDocuments)
+        ->merge($uploadedFileDocuments)
+        ->sortBy(fn ($document) => (int) $document->sort_order)
+        ->values();
+
+    $formattedDocuments = $this->formatSettingDocuments($documents);
+
+    if (!$estimateDocuments->contains('document_type', 'material_list')) {
+        $formattedDocuments[] = $this->buildMaterialListDocumentResponse($estimate, $user);
+    }
+
     return response()->json([
         'status' => true,
-        'data' => $this->formatSettingDocuments($documents),
+        'data' => $formattedDocuments,
     ]);
 }
 
@@ -975,7 +1008,17 @@ public function reorderEstimateDocuments(Request $request, $estimate)
 
     $validator = Validator::make($request->all(), [
         'document_ids' => 'required|array|min:1',
-        'document_ids.*' => 'required|integer|distinct',
+        'document_ids.*' => [
+            'required',
+            'distinct',
+            function ($attribute, $value, $fail) {
+                $documentId = (string) $value;
+
+                if (!ctype_digit($documentId) && !preg_match('/^material_list_\d+$/', $documentId)) {
+                    $fail('The ' . $attribute . ' must be a valid document id.');
+                }
+            },
+        ],
     ]);
 
     if ($validator->fails()) {
@@ -985,19 +1028,69 @@ public function reorderEstimateDocuments(Request $request, $estimate)
         ], 422);
     }
 
-    $documentIds = array_values($request->input('document_ids'));
+    $rawDocumentIds = collect($request->input('document_ids'))
+        ->map(fn ($documentId) => trim((string) $documentId))
+        ->values()
+        ->all();
+
+    $documentIds = [];
+
+    foreach ($rawDocumentIds as $documentId) {
+        if (ctype_digit($documentId)) {
+            $documentIds[] = (int) $documentId;
+            continue;
+        }
+
+        preg_match('/^material_list_(\d+)$/', $documentId, $matches);
+        $materialListEstimateId = (int) $matches[1];
+
+        if ($materialListEstimateId !== (int) $estimate->id) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Material list does not belong to this estimate.'
+            ], 422);
+        }
+
+        $materialListDocument = SettingDocument::where('company_id', $user->company_id)
+            ->where('user_id', $user->id)
+            ->where('estimate_id', $estimate->id)
+            ->where('document_type', 'material_list')
+            ->orderByDesc('id')
+            ->first();
+
+        if (!$materialListDocument) {
+            $materialListDocument = $this->createMaterialListSettingDocument($estimate, $user);
+        }
+
+        $documentIds[] = $materialListDocument->id;
+    }
+
+    $documentIds = array_values($documentIds);
+    $uniqueDocumentIds = array_unique($documentIds);
+
+    if (count($uniqueDocumentIds) !== count($documentIds)) {
+        return response()->json([
+            'status' => false,
+            'message' => 'The document_ids must be distinct.'
+        ], 422);
+    }
+
     $documents = SettingDocument::where('company_id', $user->company_id)
-        ->where(function ($query) use ($estimate, $user) {
-            $query->where(function ($estimateQuery) use ($estimate) {
-                $estimateQuery->where('estimate_id', $estimate->id)
-                    ->whereIn('document_type', ['estimate_upload', 'sub_estimate_upload']);
-            })->orWhere(function ($globalQuery) use ($user) {
-                $globalQuery->where('user_id', $user->id)
-                    ->whereNull('estimate_id')
-                    ->whereNotIn('document_type', ['estimate', 'estimate_upload', 'sub_estimate_upload']);
+        ->where('user_id', $user->id)
+        ->whereIn('id', $documentIds)
+        ->where(function ($query) use ($estimate) {
+            $query->where(function ($estimateDocumentsQuery) use ($estimate) {
+                $estimateDocumentsQuery->where('estimate_id', $estimate->id)
+                    ->whereIn('document_type', ['estimate', 'estimate_upload', 'sub_estimate_upload', 'material_list']);
+            })->orWhere(function ($uploadedFileDocumentsQuery) {
+                $uploadedFileDocumentsQuery->whereNull('estimate_id')
+                    ->where('document_type', 'file');
+            })->orWhere(function ($legacyEstimateDocumentQuery) use ($estimate) {
+                $legacyEstimateDocumentQuery->whereNull('estimate_id')
+                    ->where('document_type', 'estimate')
+                    ->where('file_path', 'like', '%estimate_' . $estimate->id . '_%');
             });
         })
-        ->whereIn('id', $documentIds)
         ->get()
         ->keyBy('id');
 
@@ -1014,20 +1107,10 @@ public function reorderEstimateDocuments(Request $request, $estimate)
         }
     });
 
-    $orderedDocuments = SettingDocument::where('company_id', $user->company_id)
-        ->where(function ($query) use ($estimate, $user) {
-            $query->where(function ($estimateQuery) use ($estimate) {
-                $estimateQuery->where('estimate_id', $estimate->id)
-                    ->whereIn('document_type', ['estimate_upload', 'sub_estimate_upload']);
-            })->orWhere(function ($globalQuery) use ($user) {
-                $globalQuery->where('user_id', $user->id)
-                    ->whereNull('estimate_id')
-                    ->whereNotIn('document_type', ['estimate', 'estimate_upload', 'sub_estimate_upload']);
-            });
-        })
-        ->orderBy('sort_order')
-        ->orderBy('id')
-        ->get();
+    $orderedDocuments = collect($documentIds)
+        ->map(fn ($documentId) => $documents->get($documentId))
+        ->filter()
+        ->values();
 
     return response()->json([
         'status' => true,
@@ -1049,6 +1132,68 @@ private function resolveEstimateForDocumentRequest($estimate, $user): ?Estimate
     return Estimate::where('id', (int) $estimate)
         ->where('company_id', $user->company_id)
         ->first();
+}
+
+private function buildMaterialListDocumentResponse(Estimate $estimate, User $user): array
+{
+    $previewUrl = url('/api/export-doc/material/preview/' . $estimate->id) . '?' . http_build_query(['user_id' => $user->id]);
+
+    return [
+        'id' => 'material_list_' . $estimate->id,
+        'estimate_id' => $estimate->id,
+        'document_type' => 'material_list',
+        'file_type' => 'pdf',
+        'file_url' => $previewUrl,
+        'preview_url' => $previewUrl,
+        'filled_preview_url' => $previewUrl,
+        'label' => 'Customer Material List',
+        'sort_order' => 0,
+        'signature_required' => false,
+        'fields' => [],
+        'created_at' => null,
+    ];
+}
+
+private function createMaterialListSettingDocument(Estimate $estimate, User $user): SettingDocument
+{
+    $downloadEmailService = new DownloadEmailService();
+    $groupCodes = $downloadEmailService->downloadMaterialListData($estimate, $user);
+    $companyModel = $user->company ?: $estimate->company;
+    $logoAndFont = $this->getCompanyLogoAndFontColor($companyModel, $user, true);
+
+    $company = [
+        'name' => optional($companyModel)->name,
+        'address' => optional($companyModel)->address,
+        'phone' => $user->phone,
+        'email' => $user->email,
+    ];
+
+    $pdfContent = Pdf::setOption(['isRemoteEnabled' => false])
+        ->loadView('reports.customer_material_list_email', [
+            'user' => $user,
+            'company' => $company,
+            'color' => $logoAndFont['fontColor'],
+            'logoPath' => $logoAndFont['logoPath'],
+            'pageNumber' => 1,
+            'groupCodes' => $groupCodes,
+        ])
+        ->output();
+
+    $storedFilename = 'material_list_' . $estimate->id . '_' . time() . '.pdf';
+    $storedPath = 'setting_documents/material_lists/' . date('Y/m') . '/' . $storedFilename;
+    Storage::disk('public')->put($storedPath, $pdfContent);
+
+    return SettingDocument::create([
+        'user_id' => $user->id,
+        'company_id' => $user->company_id,
+        'estimate_id' => $estimate->id,
+        'document_type' => 'material_list',
+        'file_path' => $storedPath,
+        'file_type' => 'pdf',
+        'document_name' => 'Customer Material List',
+        'signature_required' => false,
+        'fields' => [],
+    ]);
 }
 
 private function formatSettingDocuments($documents): array
@@ -1151,10 +1296,11 @@ private function buildFilledSettingDocumentPreviewPdf(SettingDocument $document,
     }
 
     $tempFiles = [];
+    $estimateId = $document->estimate_id ?: $this->resolveEstimateIdFromDocumentPath($document);
     $fieldContext = $this->buildDocumentFieldContext([
         'user_id' => $document->user_id,
         'company_id' => $document->company_id,
-        'estimate_id' => $document->estimate_id,
+        'estimate_id' => $estimateId,
         'document_ids' => [$document->id],
         'field_signature_paths' => [],
         'field_values' => [],
@@ -1180,6 +1326,17 @@ private function buildFilledSettingDocumentPreviewPdf(SettingDocument $document,
 private function isAllowedSettingDocumentExtension(string $extension): bool
 {
     return in_array($extension, ['pdf', 'doc', 'docx', 'png', 'jpg','jpeg'], true);
+}
+
+private function resolveEstimateIdFromDocumentPath(SettingDocument $document): ?int
+{
+    $filePath = (string) ($document->file_path ?? '');
+
+    if (preg_match('/estimate_(\d+)_/i', $filePath, $matches)) {
+        return (int) $matches[1];
+    }
+
+    return null;
 }
 
 private function normalizeDocumentFields($fields): array
@@ -1937,11 +2094,11 @@ private function appendDocumentToSignedPacket(Fpdi $pdf, SettingDocument $docume
 
 private function buildDocumentFieldContext(array $sessionData, $signedAt): array
 {
-    $user = User::with('company')->find($sessionData['user_id'] ?? null);
+    $user = User::with(['company', 'userAddress'])->find($sessionData['user_id'] ?? null);
     $estimate = null;
 
     if (!empty($sessionData['estimate_id'])) {
-        $estimate = Estimate::with(['customer', 'company'])
+        $estimate = Estimate::with(['customer', 'company', 'user.userAddress'])
             ->where('id', $sessionData['estimate_id'])
             ->where('company_id', $sessionData['company_id'] ?? null)
             ->first();
@@ -1949,8 +2106,27 @@ private function buildDocumentFieldContext(array $sessionData, $signedAt): array
 
     $company = optional($estimate)->company ?: optional($user)->company;
     $customer = optional($estimate)->customer;
+    $contractorUser = optional($estimate)->user ?: $user;
+    $contractorAddress = optional($contractorUser)->userAddress;
     $signedDate = $signedAt ? $signedAt->format('m/d/Y') : now()->format('m/d/Y');
+    $quoteDate = $this->resolveEstimateQuoteDate($estimate);
     $contractPrice = optional($estimate)->contract_price;
+    $formattedContractPrice = is_numeric($contractPrice) ? '$' . number_format((float) $contractPrice, 2) : null;
+    $customerName = optional($customer)->full_name ?: optional($customer)->name;
+    $customerInitials = $this->resolveInitialsFromName($customerName);
+    $customerCity = $this->resolveCityDisplayValue(optional($customer)->city, optional($customer)->state);
+    $customerState = $this->resolveStateDisplayValue(optional($customer)->state);
+    $companyCity = $this->resolveCityDisplayValue(
+        $this->firstFilled(optional($company)->city, optional($contractorAddress)->city),
+        $this->firstFilled(optional($company)->state, optional($company)->state_id, optional($contractorAddress)->state_id)
+    );
+    $companyState = $this->resolveStateDisplayValue($this->firstFilled(optional($company)->state, optional($company)->state_id, optional($contractorAddress)->state_id));
+    $companyZipCode = $this->firstFilled(optional($company)->zip_code, optional($company)->zip, optional($contractorAddress)->zip_code);
+    $estimatorName = optional($contractorUser)->name ?: trim((optional($contractorUser)->first_name ?: '') . ' ' . (optional($contractorUser)->last_name ?: ''));
+    $propertyAddress = $this->firstFilled(optional($estimate)->property_address, optional($estimate)->project_address, optional($estimate)->work_address, optional($customer)->address);
+    $propertyCity = $this->resolveCityDisplayValue($this->firstFilled(optional($estimate)->property_city, optional($estimate)->project_city, $customerCity), $this->firstFilled(optional($estimate)->property_state, optional($estimate)->project_state, optional($customer)->state));
+    $propertyState = $this->resolveStateDisplayValue($this->firstFilled(optional($estimate)->property_state, optional($estimate)->project_state, $customerState));
+    $propertyZipCode = $this->firstFilled(optional($estimate)->property_zip_code, optional($estimate)->project_zip_code, optional($estimate)->zip_code, optional($customer)->zip_code);
 
     return [
         'user' => $user,
@@ -1963,33 +2139,167 @@ private function buildDocumentFieldContext(array $sessionData, $signedAt): array
         'values' => [
             'date' => $signedDate,
             'signed_date' => $signedDate,
-            'owner_name' => optional($customer)->full_name ?: optional($customer)->name,
-            'name' => optional($customer)->full_name ?: optional($customer)->name,
-            'customer_name' => optional($customer)->full_name ?: optional($customer)->name,
+            'owner_name' => $customerName,
+            'name' => $customerName,
+            'customer_name' => $customerName,
+            'customer_initials' => $customerInitials,
+            'customers_initials' => $customerInitials,
+            'owner_initials' => $customerInitials,
+            'initials' => $customerInitials,
             'customer_address' => optional($customer)->address,
-            'customer_email' => optional($customer)->email,
+            'customer_city' => $customerCity,
             'customer_phone' => optional($customer)->phone,
+            'customer_phone_number' => optional($customer)->phone,
+            'customer_email' => optional($customer)->email,
+            'customer_email_address' => optional($customer)->email,
+            'customer_zip_code' => optional($customer)->zip_code,
+            'customer_zip' => optional($customer)->zip_code,
+            'customer_state' => $customerState,
             'company_name' => optional($company)->name,
             'contractor_name' => optional($company)->name,
-            'company_phone' => optional($user)->phone,
-            'company_email' => optional($user)->email,
-            'user_name' => optional($user)->name ?: trim((optional($user)->first_name ?: '') . ' ' . (optional($user)->last_name ?: '')),
+            'estimator_name' => $estimatorName,
+            'estimater_name' => $estimatorName,
+            'company_address' => optional($company)->address,
+            'company_city' => $companyCity,
+            'company_state' => $companyState,
+            'company_zip_code' => $companyZipCode,
+            'company_zip' => $companyZipCode,
+            'company_phone' => optional($contractorUser)->phone,
+            'company_phone_number' => optional($contractorUser)->phone,
+            'company_email' => optional($contractorUser)->email,
+            'user_name' => $estimatorName,
             'esign_user' => $this->resolveUserSignatureDisplayText($user),
             'license_number' => optional($company)->license_no,
             'license_no' => optional($company)->license_no,
             'address' => optional($customer)->address,
-            'work_address' => optional($customer)->address,
-            'company_address' => optional($company)->address,
+            'work_address' => $propertyAddress,
+            'property_address' => $propertyAddress,
+            'property_city' => $propertyCity,
+            'property_state' => $propertyState,
+            'property_zip_code' => $propertyZipCode,
+            'property_zip' => $propertyZipCode,
+            'project_address' => $propertyAddress,
+            'project_city' => $propertyCity,
+            'project_state' => $propertyState,
+            'project_zip_code' => $propertyZipCode,
+            'project_zip' => $propertyZipCode,
             'scope_of_work' => optional($estimate)->estimate_scope,
             'scope' => optional($estimate)->estimate_scope,
-            'grand_total' => is_numeric($contractPrice) ? '$' . number_format((float) $contractPrice, 2) : null,
-            'contract_price' => is_numeric($contractPrice) ? '$' . number_format((float) $contractPrice, 2) : null,
+            'grand_total' => $formattedContractPrice,
+            'total_price' => $formattedContractPrice,
+            'contract_price' => $formattedContractPrice,
             'estimate_no' => optional($estimate)->key ?: optional($estimate)->id,
             'estimate_number' => optional($estimate)->key ?: optional($estimate)->id,
-            'quote_date' => optional($estimate)->created_at ? $estimate->created_at->format('M j, Y') : null,
-            'qoute_date' => optional($estimate)->created_at ? $estimate->created_at->format('M j, Y') : null,
+            'quote_date' => $quoteDate,
+            'qoute_date' => $quoteDate,
         ],
     ];
+}
+
+private function firstFilled(...$values)
+{
+    foreach ($values as $value) {
+        if ($value !== null && $value !== '') {
+            return $value;
+        }
+    }
+
+    return null;
+}
+
+private function resolveCityDisplayValue($city, $state = null): ?string
+{
+    if ($city === null || $city === '' || (is_numeric($city) && (int) $city === 0)) {
+        return null;
+    }
+
+    if (is_numeric($city)) {
+        $query = \App\Models\City::where("id", (int) $city);
+
+        if ($state !== null && $state !== '' && is_numeric($state)) {
+            $query->where("state_id", (int) $state);
+        }
+
+        $cityModel = $query->first(["city_name"]);
+
+        return optional($cityModel)->city_name ?: (string) $city;
+    }
+
+    return (string) $city;
+}
+
+private function resolveStateDisplayValue($state): ?string
+{
+    if ($state === null || $state === '' || (is_numeric($state) && (int) $state === 0)) {
+        return null;
+    }
+
+    if (is_numeric($state)) {
+        $stateModel = \App\Models\State::where("id", (int) $state)->first(["state_name"]);
+
+        return optional($stateModel)->state_name ?: (string) $state;
+    }
+
+    return (string) $state;
+}
+
+private function resolveInitialsFromName(?string $name): ?string
+{
+    $parts = preg_split('/\\s+/', trim((string) $name));
+    $parts = array_values(array_filter($parts, fn ($part) => $part !== ''));
+
+    if (empty($parts)) {
+        return null;
+    }
+
+    return strtoupper(implode('', array_map(fn ($part) => Str::substr($part, 0, 1), $parts)));
+}
+
+private function resolveEstimateQuoteDate(?Estimate $estimate): ?string
+{
+    if (!$estimate) {
+        return null;
+    }
+
+    foreach (['estimate_date', 'estimate_date_time', 'created_at'] as $attribute) {
+        $value = $estimate->{$attribute} ?? null;
+
+        if ($value instanceof \DateTimeInterface) {
+            return \Illuminate\Support\Carbon::instance($value)->format('m/d/Y');
+        }
+
+        if (!empty($value)) {
+            try {
+                return \Illuminate\Support\Carbon::parse((string) $value)->format('m/d/Y');
+            } catch (\Throwable $exception) {
+            }
+        }
+    }
+
+    return null;
+}
+
+private function hydrateSigningDocumentsWithResolvedFieldValues($documents, array $sessionData)
+{
+    $fieldContext = $this->buildDocumentFieldContext(
+        $sessionData,
+        $this->resolveSignedAtForPacket($sessionData, $documents)
+    );
+
+    return $documents->map(function ($document) use ($fieldContext) {
+        $document->fields = collect($this->normalizeDocumentFields($document->fields ?? []))
+            ->map(function ($field) use ($fieldContext, $document) {
+                if (($field['type'] ?? 'text') !== 'signature' && empty($field['value'])) {
+                    $field['value'] = $this->resolveDocumentFieldValue($field, $fieldContext, (int) $document->id);
+                }
+
+                return $field;
+            })
+            ->values()
+            ->all();
+
+        return $document;
+    })->values();
 }
 
 private function overlayDocumentFields(Fpdi $pdf, ?SettingDocument $document, int $pageNumber, array $pageSize, array $fieldContext, array &$tempFiles, string $tempDir): void
@@ -2038,7 +2348,7 @@ private function overlayDocumentFields(Fpdi $pdf, ?SettingDocument $document, in
 
         $fontSize = $field['font_size'] ?: min(12, max(7, $rect['height'] * 1.25));
         $pdf->SetFont('Helvetica', '', $fontSize);
-        $pdf->SetTextColor(18, 27, 38);
+        $pdf->SetTextColor(220, 0, 0);
         $pdf->SetXY($rect['x'] + 1, $rect['y'] + 1);
         $pdf->MultiCell(max(1, $rect['width'] - 2), max(3, $fontSize * 0.45), utf8_decode($value), 0, 'C');
     }
@@ -2096,11 +2406,9 @@ private function signatureReference(SettingDocument $document): string
 
 private function drawDocumentFieldUnderline(Fpdi $pdf, array $rect): void
 {
-    $y = $rect['y'] + $rect['height'] - 0.7;
-
-    $pdf->SetDrawColor(18, 27, 38);
-    $pdf->SetLineWidth(0.25);
-    $pdf->Line($rect['x'], $y, $rect['x'] + $rect['width'], $y);
+    $pdf->SetDrawColor(22, 55, 70);
+    $pdf->SetLineWidth(0.35);
+    $pdf->Rect($rect['x'], $rect['y'], $rect['width'], $rect['height']);
 }
 
 private function resolveDocumentFieldRect(array $field, float $pageWidth, float $pageHeight): array
@@ -2179,6 +2487,10 @@ private function resolveDocumentFieldValue(array $field, array $fieldContext, ?i
 
     if (Str::contains($key, ['date'])) {
         return (string) ($values['date'] ?? '');
+    }
+
+    if (Str::contains($key, ['initial'])) {
+        return (string) ($values['customer_initials'] ?? '');
     }
 
     if (Str::contains($key, ['owner', 'customer', 'name'])) {
@@ -2582,7 +2894,7 @@ public function sendDocumentsByEmail(Request $request)
 
     $validator = Validator::make($request->all(), [
         'document_ids'   => 'nullable|required_without:estimate_id|array|min:1',
-        'document_ids.*' => 'integer|distinct|exists:setting_documents,id',
+        'document_ids.*' => 'required|distinct',
         'estimate_id'    => 'integer|exists:estimates,id',
         'estimate_fields' => 'nullable',
         'email'          => 'required|email',
@@ -2602,23 +2914,73 @@ public function sendDocumentsByEmail(Request $request)
         $user = auth()->user();
         $description = trim((string) $request->input('description', ''));
         $description = $description !== '' ? $description : null;
-        $documentIds = collect($request->input('document_ids', []))
+        $rawDocumentIds = collect($request->input('document_ids', []))
             ->map(function ($documentId) {
-                return (int) $documentId;
+                return trim((string) $documentId);
             })
+            ->filter(fn ($documentId) => $documentId !== '')
             ->values()
             ->all();
 
-        $documents = $this->getOrderedSigningDocuments($documentIds)
+        $numericDocumentIds = [];
+        $materialListEstimateIds = [];
+
+        foreach ($rawDocumentIds as $documentId) {
+            if (ctype_digit($documentId)) {
+                $numericDocumentIds[] = (int) $documentId;
+                continue;
+            }
+
+            if (preg_match('/^material_list_(\d+)$/', $documentId, $matches)) {
+                $materialListEstimateIds[$documentId] = (int) $matches[1];
+                continue;
+            }
+
+            return response()->json([
+                'status' => false,
+                'message' => 'Invalid document id selected.'
+            ], 422);
+        }
+
+        $storedDocuments = $this->getOrderedSigningDocuments($numericDocumentIds)
             ->where('user_id', $user->id)
             ->where('company_id', $user->company_id)
-            ->values();
+            ->keyBy('id');
 
-        if ($documents->count() !== count($documentIds)) {
+        if ($storedDocuments->count() !== count($numericDocumentIds)) {
             return response()->json([
                 'status'  => false,
                 'message' => 'Some selected documents were not found.'
             ], 404);
+        }
+
+        $documents = collect();
+        $documentIds = [];
+
+        foreach ($rawDocumentIds as $documentId) {
+            if (ctype_digit($documentId)) {
+                $storedDocument = $storedDocuments->get((int) $documentId);
+                if ($storedDocument) {
+                    $documents->push($storedDocument);
+                    $documentIds[] = $storedDocument->id;
+                }
+                continue;
+            }
+
+            $materialEstimate = Estimate::where('id', $materialListEstimateIds[$documentId])
+                ->where('company_id', $user->company_id)
+                ->first();
+
+            if (!$materialEstimate) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Material list estimate was not found.'
+                ], 404);
+            }
+
+            $materialListDocument = $this->createMaterialListSettingDocument($materialEstimate, $user);
+            $documents->push($materialListDocument);
+            $documentIds[] = $materialListDocument->id;
         }
 
         if ($documents->isEmpty() && !$request->filled('estimate_id')) {
@@ -2649,6 +3011,7 @@ public function sendDocumentsByEmail(Request $request)
                 $estimateDocument = SettingDocument::create([
                     'user_id' => $user->id,
                     'company_id' => $user->company_id,
+                    'estimate_id' => $estimate->id,
                     'document_type' => 'estimate',
                     'file_path' => $storedPath,
                     'file_type' => 'pdf',
@@ -2830,6 +3193,7 @@ public function showSignDocument($token)
     }
 
     $documents = $this->resolveSigningDocuments($data);
+    $documents = $this->hydrateSigningDocumentsWithResolvedFieldValues($documents, $data);
     $signingUser = User::find($data['user_id'] ?? null);
     $userSignaturePath = $this->resolveUserSignatureRelativePath($signingUser);
 
