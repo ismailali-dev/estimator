@@ -435,7 +435,7 @@ class User extends \TCG\Voyager\Models\User
         return url('storage/' . $file);
     }
 
-    return null;
+    return $this->sign;
 }
 
        protected static function booted()

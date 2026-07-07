@@ -121,31 +121,42 @@
             border: 1px solid #000;
             color: #fff;
             font-weight: bold;
+            font-size: 16px;
             text-align: center;
             padding: 9px 8px;
             line-height: 1;
+            text-transform: uppercase;
         }
         .spec-row {
+            display: table;
+            width: 100%;
+            table-layout: fixed;
             clear: both;
-            height: 24px;
-            line-height: 24px;
+            line-height: 1.35;
+            margin: 4px 0;
+        }
+        .spec-no,
+        .spec-desc,
+        .spec-qty,
+        .spec-unit {
+            display: table-cell;
+            vertical-align: top;
         }
         .spec-no {
-            display: inline-block;
-            width: 24px;
+            width: 36px;
         }
         .spec-desc {
-            display: inline-block;
-            width: 455px;
+            width: auto;
+            padding-right: 12px;
+            overflow-wrap: break-word;
+            word-wrap: break-word;
         }
         .spec-qty {
-            display: inline-block;
             width: 78px;
             text-align: center;
         }
         .spec-unit {
-            display: inline-block;
-            width: 42px;
+            width: 54px;
             text-align: center;
         }
         .total-row {
@@ -192,7 +203,7 @@
 <div class="estimate-page">
     <div class="company-header">
         <div class="company-logo">
-            <img src="{{ $logoPath }}" alt="Company Logo">
+            <img src="{{ $logoPath }}">
         </div>
         <div class="company-info">
             <h1>{{ @$company->name }}</h1>
@@ -233,6 +244,7 @@
         @php
             $currentProductGroup = null;
             $sno = 0;
+            $groupBackgroundColor = '#' . ltrim($color ?: '000000', '#');
         @endphp
         @foreach ($sheets as $sheet)
             @php
@@ -243,7 +255,7 @@
                     $currentProductGroup = $productGroup;
                     $sno = 0;
                 @endphp
-                <table class="group-table" cellspacing="0" cellpadding="0"><tr><td bgcolor="{{ '#' . ltrim($color ?: '000000', '#') }}" style="background-color: {{ '#' . ltrim($color ?: '000000', '#') }}; color: #fff;">{{ $currentProductGroup }}</td></tr></table>
+                <table class="group-table" cellspacing="0" cellpadding="0"><tr><td bgcolor="{{ $groupBackgroundColor }}" style="background-color: {{ $groupBackgroundColor }}; color: #fff; border: 1px solid #000; font-size: 16px;">{{ $currentProductGroup }}</td></tr></table>
             @endif
             @php $sno++; @endphp
             <div class="spec-row">

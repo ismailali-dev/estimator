@@ -115,14 +115,7 @@
         }
 
         .document-block::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 4px;
-            background: linear-gradient(90deg, var(--accent-gold), #dbb067, #f3e2c2);
-            z-index: 1;
+            content: none;
         }
 
         .document-block:hover {
@@ -178,7 +171,7 @@
             border-radius: 1.25rem;
             background: #fefaf5;
             overflow: hidden;
-            border: 1px solid rgba(182, 139, 64, 0.15);
+            border: 0;
             transition: 0.2s;
         }
 
@@ -840,7 +833,21 @@
             .dropdown-group {
                 justify-content: space-between;
             }
+            .field-overlay.is-editable {
+                border-width: 1px;
+                font-size: clamp(6px, 1.8vw, 10px) !important;
+                line-height: 1;
+            }
+            .field-overlay.is-editable .field-overlay-input {
+                padding: 0 2px;
+                font-size: inherit !important;
+                line-height: 1;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
         }
+
     </style>
 </head>
 <body>
@@ -955,9 +962,10 @@
     <div id="signature-modal" class="modal" aria-hidden="true">
         <div class="modal-card">
             <h3 id="modal-title">Add your signature</h3>
-            <p style="color: #7f6e5b; margin-bottom: 1rem;">Choose name or draw your signature.</p>
+            <p style="color: #7f6e5b; margin-bottom: 1rem;">Choose name, initials, or draw your signature.</p>
             <div class="signature-mode-toggle" role="group" aria-label="Signature type">
                 <button type="button" class="signature-mode-btn is-active" data-signature-mode="name">Name</button>
+                <button type="button" class="signature-mode-btn" data-signature-mode="initial">Initial</button>
                 <button type="button" class="signature-mode-btn" data-signature-mode="draw">Draw</button>
             </div>
             <canvas id="signature-pad" class="signature-canvas"></canvas>
@@ -1052,6 +1060,7 @@
         const signatures = {};
         const signatureModes = {};
         const defaultSignatureCache = {};
+        const defaultInitialCache = {};
         const fieldValues = {};
         const defaultSignerName = @json($signerName);
         const signingReference = @json($signingReference);
@@ -1097,13 +1106,24 @@
             `;
         }
 
-        function buildDefaultSignatureDataUrl(name) {
+        function initialsFromName(name) {
+            const parts = String(name || 'Customer')
+                .trim()
+                .split(/\s+/)
+                .filter(Boolean);
+
+            if (!parts.length) return 'C';
+
+            return parts.map(part => part.charAt(0)).join('').toUpperCase();
+        }
+
+        function buildDefaultSignatureDataUrl(name, initialsOnly = false) {
             const canvas = document.createElement('canvas');
             canvas.width = 900;
             canvas.height = 150;
             const ctx = canvas.getContext('2d');
-            const safeName = String(name || 'Customer').trim() || 'Customer';
-            let fontSize = 94;
+            const safeName = initialsOnly ? initialsFromName(name) : (String(name || 'Customer').trim() || 'Customer');
+            let fontSize = initialsOnly ? 104 : 94;
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.fillStyle = '#3a3530';
             ctx.textAlign = 'center';
@@ -1127,14 +1147,22 @@
             return defaultSignatureCache[key];
         }
 
+        function defaultInitialForDocument(documentId) {
+            const key = String(documentId || 'default');
+            if (!defaultInitialCache[key]) {
+                defaultInitialCache[key] = buildDefaultSignatureDataUrl(defaultSignerName, true);
+            }
+            return defaultInitialCache[key];
+        }
+
         function updateSignatureModeUi() {
             signatureModeButtons.forEach(button => {
                 const isActive = button.dataset.signatureMode === activeSignatureMode;
                 button.classList.toggle('is-active', isActive);
                 button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
             });
-            signatureCanvas.classList.toggle('is-name-mode', activeSignatureMode === 'name');
-            signatureCanvas.style.pointerEvents = activeSignatureMode === 'name' ? 'none' : 'auto';
+            signatureCanvas.classList.toggle('is-name-mode', activeSignatureMode === 'name' || activeSignatureMode === 'initial');
+            signatureCanvas.style.pointerEvents = activeSignatureMode === 'draw' ? 'auto' : 'none';
         }
 
         function paintSignatureToCanvas(dataUrl, markPad = true) {
@@ -1153,10 +1181,14 @@
         }
 
         function setSignatureMode(mode, resetDraw = false) {
-            activeSignatureMode = mode === 'draw' ? 'draw' : 'name';
+            activeSignatureMode = ['name', 'initial', 'draw'].includes(mode) ? mode : 'name';
             updateSignatureModeUi();
             if (activeSignatureMode === 'name') {
                 paintSignatureToCanvas(defaultSignatureForDocument(activeDocumentId));
+                return;
+            }
+            if (activeSignatureMode === 'initial') {
+                paintSignatureToCanvas(defaultInitialForDocument(activeDocumentId));
                 return;
             }
             if (resetDraw) {
@@ -1236,8 +1268,8 @@
         });
 
         document.getElementById('clear-signature').addEventListener('click', () => {
-            if (activeSignatureMode === 'name') {
-                setSignatureMode('name');
+            if (activeSignatureMode === 'name' || activeSignatureMode === 'initial') {
+                setSignatureMode(activeSignatureMode);
                 return;
             }
             signaturePad.clear();
@@ -1247,6 +1279,9 @@
             if (activeSignatureMode === 'name') {
                 signatures[activeDocumentId] = defaultSignatureForDocument(activeDocumentId);
                 signatureModes[activeDocumentId] = 'name';
+            } else if (activeSignatureMode === 'initial') {
+                signatures[activeDocumentId] = defaultInitialForDocument(activeDocumentId);
+                signatureModes[activeDocumentId] = 'initial';
             } else {
                 if (signaturePad.isEmpty()) {
                     alert('Please draw your signature before saving.');
@@ -1329,7 +1364,7 @@
             overlay.style.top = `${Math.max(0, rect.y)}px`;
             overlay.style.width = `${Math.max(1, rect.width)}px`;
             overlay.style.height = `${Math.max(1, rect.height)}px`;
-            overlay.style.fontSize = `${Math.max(10, Math.min(26, rect.height * 0.55))}px`;
+            overlay.style.fontSize = Math.max(7, Math.min(20, rect.height * 0.45)) + 'px';
 
             if (isSignature) {
                 if (isUserSignatureField(field)) {
@@ -1352,10 +1387,14 @@
             } else {
                 const input = document.createElement('input');
                 input.className = 'field-overlay-input';
-                input.type = String(field.type || '').toLowerCase() === 'date' ? 'text' : 'text';
+                input.type = String(field.type || '').toLowerCase() === 'custom_integer' ? 'number' : 'text';
+                if (input.type === 'number') input.step = '1';
                 input.dataset.fieldId = fieldId;
                 input.dataset.fieldKey = field.key || '';
-                input.placeholder = field.label || field.key || '';
+                const fieldType = String(field.type || '').toLowerCase();
+                input.placeholder = fieldType === 'custom_string'
+                    ? 'Custom String'
+                    : (fieldType === 'custom_integer' ? 'Custom Integer' : (field.label || field.key || ''));
                 input.value = fieldValues?.[documentId]?.[fieldId] ?? field.value ?? '';
                 input.addEventListener('input', () => {
                     if (!fieldValues[documentId]) fieldValues[documentId] = {};

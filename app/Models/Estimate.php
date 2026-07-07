@@ -64,4 +64,9 @@ class Estimate extends Model
         return $this->belongsTo(User::class)->withTrashed();
     }
 
+
+    public function customFields():HasMany
+    {
+        return $this->hasMany(EstimateCustomField::class);
+    }
 }
