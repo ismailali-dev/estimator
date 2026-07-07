@@ -73,12 +73,12 @@
     <div class="row mb-4">
         <div class="col-md-12 text-center text-md-start d-flex justify-content-center">
             <div class="company-logo">
-                <img src="{{ $logoPath }}" alt="Company Logo" style="width:100%">
+                <img src="{{$logoPath}}" alt="Company Logo" style="width:100%">
             </div>
             <div style="text-align:left">
                 <h1 class="header-title" style="color:#000">{{@$company->name}}</h1>
                 <p>{{@$user->phone}}</p>
-                <p>{{@$user->email}}</p>
+                <p><!--email_off-->{{@$user->email}}<!--/email_off--></p>
                 <p>{{@$company->address}}</p>
             </div>
         </div>

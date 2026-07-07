@@ -46,66 +46,64 @@ class ExcelExportController extends ResponseController
     }
 
 
-    public function downloadMaterialList(Estimate $estimate)
+    public function downloadMaterialList(Estimate $estimate, $user_id = null)
     {
-        $user_id = \request()->get('user_id');
-        
-        
+        return $this->materialListPdfResponse($estimate, $user_id, 'attachment');
+    }
+
+    public function previewMaterialList(Estimate $estimate, $user_id = null)
+    {
+        return $this->materialListPdfResponse($estimate, $user_id, 'inline');
+    }
+
+    private function materialListPdfResponse(Estimate $estimate, $user_id = null, string $disposition = 'attachment')
+    {
+        $user_id = \request()->get('user_id', $user_id);
+
+        if (is_string($user_id) && str_starts_with($user_id, 'user_id=')) {
+            $user_id = substr($user_id, strlen('user_id='));
+        }
+
         if ($user_id) {
             $user = User::find($user_id);
-            
+
             if ($user) {
                 $downloadEmailService = new DownloadEmailService();
                 $resp = $downloadEmailService->downloadMaterialListData($estimate, $user);
-               
-               
-                $company = $user->company;
-                $logoAndFont = $this->getCompanyLogoAndFontColor($company, $user);
-                
+
+                $companyModel = $user->company;
+                $logoAndFont = $this->getCompanyLogoAndFontColor($companyModel, $user);
+
                 $company = [
-                    'name' => $company->name,
-                    'address' => $company->address,
+                    'name' => $companyModel->name,
+                    'address' => $companyModel->address,
                     'phone' => $user->phone,
                     'email' => $user->email,
                 ];
-    
-                // Data to pass into the view
-                $data = [
+
+                $pdf = Pdf::loadView('reports.customer_material_list', [
                     'user' => $user,
                     'company' => $company,
                     'color' => $logoAndFont['fontColor'],
                     'logoPath' => $logoAndFont['logoPath'],
                     'pageNumber' => 1,
-                    'groupCodes'=>$resp
-                ];
-    
-                // Load the view and generate the PDF
-                $pdf = Pdf::loadView('reports.customer_material_list', $data);
-                
-                // // Return the PDF as a streamed response, inline in the browser
-                // return $pdf->download('customer_material_list.pdf');
-                
-                 // Generate the PDF content as a string
+                    'groupCodes' => $resp,
+                ]);
+
                 $pdfContent = $pdf->output();
-                
-                // Get the file size (in bytes)
                 $fileSize = strlen($pdfContent);
-                
-                // Define headers including the file size
-                $headers = [
-                    'Content-Type' => 'application/pdf', // MIME type for PDF files
-                    'Content-Disposition' => 'attachment; filename="customer_material_list.pdf"', // Force download and specify the filename
-                    'Content-Length' => $fileSize, // Add the file size to the headers
-                    'X-File-Size' => $fileSize, // Optional custom header for file size (if needed for tracking)
-                    'Cache-Control' => 'no-store, no-cache, must-revalidate', // Optional cache control
-                ];
-                
-                // Return the PDF with headers
-                return response($pdfContent, 200, $headers);
+
+                return response($pdfContent, 200, [
+                    'Content-Type' => 'application/pdf',
+                    'Content-Disposition' => $disposition . '; filename="customer_material_list.pdf"',
+                    'Content-Length' => $fileSize,
+                    'X-File-Size' => $fileSize,
+                        'Cache-Control' => 'no-store, no-cache, must-revalidate',
+                ]);
             }
         }
-    
-        abort(403); // If no user found, return 403
+
+        abort(403);
     }
 
 
@@ -171,7 +169,7 @@ class ExcelExportController extends ResponseController
     public function downloadEstimate(Estimate $estimate,EstimateService $estimateService)
     {
 
-    // dd('this api')
+    // dd('this api is for estimate download');
         $user_id = \request()->get('user_id');
         
         
@@ -311,7 +309,7 @@ class ExcelExportController extends ResponseController
                     // Round the grand total and total
                     $detail['grand_total'] = number_format(round($detail['grand_total'], 2), 2, '.', ',');
                    
-                    return view('reports.estimates.preview', [
+                    return response()->view('reports.estimates.preview', [
                         'color'=>$logoAndFont['fontColor'],
                         'logoPath'=>$logoAndFont['logoPath'],
                         'company'=>$company,
@@ -323,7 +321,7 @@ class ExcelExportController extends ResponseController
                         'detail' => $detail,
                         'grand_total'=>$detail['grand_total'],
                         'signatureData' => $signatureData // Pass signature data to view
-                    ]);
+                    ])->header('Cache-Control', 'no-transform, no-store, no-cache, must-revalidate');
                                 
                 }
                 
@@ -544,33 +542,62 @@ class ExcelExportController extends ResponseController
     }
     
     
+    // protected function getCompanyLogoAndFontColor($company, $user)
+    // {
+    //     // Default values
+    //     $fontColor = '000000'; // Default font color
+    //     $logoPath = asset('assets/img/logo-old.png'); // Default logo path
+    
+    //     // Fetch invoice settings for the company
+    //     $invoiceSetting = UserInvoiceSetting::where("company_id", $company->id)->first();
+    
+    //     // If the user has a subscription and invoice settings exist
+    //     if ($invoiceSetting && $user->hasSubscription(Membership::SUBSCRIPTION_INVOICE)) {
+    //         // Check for a custom logo
+    //         if ($invoiceSetting->logo) {
+    //             $logoPath = asset($invoiceSetting->logo); // Use custom logo
+    //         }
+    //         // Check for a custom font color
+    //         if ($invoiceSetting->color) {
+    //             $fontColor = $invoiceSetting->color; // Use custom font color
+    //         }
+    //     }
+    
+    //     // Return both values
+    //     return [
+    //         'fontColor' => $fontColor,
+    //         'logoPath' => $logoPath,
+    //     ];
+    // }
+
     protected function getCompanyLogoAndFontColor($company, $user)
-    {
-        // Default values
-        $fontColor = '000000'; // Default font color
-        $logoPath = asset('assets/img/logo-old.png'); // Default logo path
-    
-        // Fetch invoice settings for the company
-        $invoiceSetting = UserInvoiceSetting::where("company_id", $company->id)->first();
-    
-        // If the user has a subscription and invoice settings exist
-        if ($invoiceSetting && $user->hasSubscription(Membership::SUBSCRIPTION_INVOICE)) {
-            // Check for a custom logo
-            if ($invoiceSetting->logo) {
-                $logoPath = asset($invoiceSetting->logo); // Use custom logo
-            }
-            // Check for a custom font color
-            if ($invoiceSetting->color) {
-                $fontColor = $invoiceSetting->color; // Use custom font color
-            }
+{
+    // Default values
+    $fontColor = '000000'; // Default font color
+    $logoPath = asset('assets/img/logo-old.png'); // Default logo path
+
+    // Fetch invoice settings for the company
+    $invoiceSetting = UserInvoiceSetting::where("company_id", $company->id)->first();
+
+    // If the user has a subscription and invoice settings exist
+    if ($invoiceSetting && $user->hasSubscription(Membership::SUBSCRIPTION_INVOICE)) {
+        // Check for a custom logo
+        if ($invoiceSetting->logo) {
+            $file = str_ireplace("app/", "", $invoiceSetting->logo);
+            $logoPath = asset($file); // Use custom logo
         }
-    
-        // Return both values
-        return [
-            'fontColor' => $fontColor,
-            'logoPath' => $logoPath,
-        ];
+        // Check for a custom font color
+        if ($invoiceSetting->color) {
+            $fontColor = $invoiceSetting->color; // Use custom font color
+        }
     }
+
+    // Return both values
+    return [
+        'fontColor' => $fontColor,
+        'logoPath' => $logoPath,
+    ];
+}
 
 
 }
