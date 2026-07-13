@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\DB;
 use App\Models\User;
 use App\Models\SettingDocument;
 use App\Models\Estimate;
+use App\Models\EstimateCustomField;
 use App\Models\UserInvoiceSetting;
 use App\Models\EstimateSignature;
 use Illuminate\Support\Facades\Storage;
@@ -1355,9 +1356,15 @@ private function normalizeDocumentFields($fields): array
             return is_array($field);
         })
         ->map(function ($field, $index) {
-            $type = strtolower((string) ($field['type'] ?? $field['field_type'] ?? 'text'));
+            $type = Str::slug(strtolower((string) ($field['type'] ?? $field['field_type'] ?? 'text')), '_');
             $key = (string) ($field['key'] ?? $field['name'] ?? $field['label'] ?? $type);
             $normalizedKey = Str::slug($key, '_');
+
+            if (in_array($type, ['custom_integer', 'custom_int', 'integer'], true) || in_array($normalizedKey, ['custom_integer', 'custom_int'], true)) {
+                $type = 'custom_integer';
+            } elseif (in_array($type, ['custom_string', 'string'], true) || $normalizedKey === 'custom_string') {
+                $type = 'custom_string';
+            }
 
             if (Str::contains($normalizedKey, [
                 'signature',
@@ -1373,7 +1380,7 @@ private function normalizeDocumentFields($fields): array
 
             return [
                 'id' => (string) ($field['id'] ?? $key . '_' . $index),
-                'type' => in_array($type, ['text', 'date', 'signature'], true) ? $type : 'text',
+                'type' => in_array($type, ['text', 'date', 'signature', 'custom_string', 'custom_integer'], true) ? $type : 'text',
                 'key' => $key,
                 'label' => (string) ($field['label'] ?? $key),
                 'page' => max(1, (int) ($field['page'] ?? $field['page_number'] ?? 1)),
@@ -2991,6 +2998,7 @@ public function sendDocumentsByEmail(Request $request)
         }
 
         $estimateDocumentId = null;
+        $sessionEstimateId = null;
 
         if ($request->filled('estimate_id')) {
             $failureStage = 'resolve_estimate_document';
@@ -3052,10 +3060,11 @@ public function sendDocumentsByEmail(Request $request)
             }
 
             $estimateDocumentId = $estimateDocument->id;
+            $sessionEstimateId = $estimateDocument->estimate_id;
         }
 
         // Generate a unique signing token
-        $token = \Str::uuid();
+        $token = bin2hex(random_bytes(16));
 
         // Store token against document ids
         $failureStage = 'store_signing_link';
@@ -3066,7 +3075,7 @@ public function sendDocumentsByEmail(Request $request)
             'email'        => $request->email,
             'user_id'      => $user->id,
             'company_id'   => $user->company_id,
-            'estimate_id'  => $request->filled('estimate_id') ? (int) $request->estimate_id : null,
+            'estimate_id'  => $sessionEstimateId,
             'message'      => $description,
             'sent_at'      => $sentAt->toDateTimeString(),
             'expires_at'   => $expiresAt->toDateTimeString(),
@@ -3113,6 +3122,7 @@ public function sendDocumentsByEmail(Request $request)
 
 public function signingCompletionDetails($token)
 {
+    
     $data = $this->getSigningSession($token);
 
     if (!$data) {
@@ -3237,6 +3247,7 @@ public function showSignDocument($token)
             });
         })
         ->values();
+
 
     return view('document.sign', [
         'documents' => $documents,
@@ -3531,6 +3542,7 @@ public function submitSignature(Request $request, $token)
     $signatures = $request->input('signatures', []);
     $fieldSignatures = $request->input('field_signatures', []);
     $fieldValues = $this->normalizeSubmittedFieldValues($request->input('field_values', []));
+    $estimateId = $this->resolveSigningEstimateId($data, $documents);
     $requiredDocuments = $documents->filter(function ($document) {
         return $this->documentRequiresSignature($document);
     });
@@ -3625,11 +3637,16 @@ public function submitSignature(Request $request, $token)
 
         $document->update($updatePayload);
     }
-
     $data['field_signature_paths'] = $fieldSignaturePaths;
     $data['field_values'] = $fieldValues;
 
     $freshDocuments = $this->resolveSigningDocuments($data);
+
+    if ($estimateId) {
+        $this->replaceEstimateCustomFields($estimateId, $this->extractEstimateCustomFieldsFromDocuments($freshDocuments));
+        $data['estimate_id'] = $estimateId;
+    }
+
     $signedPacketPath = $this->generateSignedPacket($data, $freshDocuments, $token, $signedAt);
 
     $data['signed_packet_path'] = $signedPacketPath;
@@ -3642,6 +3659,96 @@ public function submitSignature(Request $request, $token)
         'view_url' => url('/document/sign/' . $token . '/view'),
         'download_url' => url('/document/sign/' . $token . '/download'),
     ]);
+}
+
+private function resolveSigningEstimateId(array $sessionData, $documents): ?int
+{
+    $estimateId = $sessionData['estimate_id'] ?? null;
+
+    if ($estimateId) {
+        return (int) $estimateId;
+    }
+
+    $documentEstimateId = $documents
+        ->pluck('estimate_id')
+        ->filter()
+        ->first();
+
+    return $documentEstimateId ? (int) $documentEstimateId : null;
+}
+
+private function extractEstimateCustomFieldsFromDocuments($documents): array
+{
+    $rowsByLine = [];
+
+    foreach ($documents as $document) {
+        foreach ($this->normalizeDocumentFields($document->fields ?? []) as $field) {
+            $type = (string) ($field['type'] ?? '');
+            if (!in_array($type, ['custom_string', 'custom_integer'], true)) {
+                continue;
+            }
+
+            $value = trim((string) ($field['value'] ?? ''));
+            if ($value === '') {
+                continue;
+            }
+
+            if ($type === 'custom_integer' && filter_var($value, FILTER_VALIDATE_INT) === false) {
+                continue;
+            }
+
+            $lineKey = implode(':', [
+                (string) $document->id,
+                (string) ($field['page'] ?? 1),
+                (string) round((float) ($field['y'] ?? 0), 1),
+            ]);
+
+            if (!isset($rowsByLine[$lineKey])) {
+                $rowsByLine[$lineKey] = [
+                    'custom_string' => null,
+                    'custom_integer' => null,
+                    '_sort_y' => (float) ($field['y'] ?? 0),
+                    '_sort_x' => (float) ($field['x'] ?? 0),
+                ];
+            }
+
+            $rowsByLine[$lineKey]['_sort_y'] = min($rowsByLine[$lineKey]['_sort_y'], (float) ($field['y'] ?? 0));
+            $rowsByLine[$lineKey]['_sort_x'] = min($rowsByLine[$lineKey]['_sort_x'], (float) ($field['x'] ?? 0));
+
+            if ($type === 'custom_string') {
+                $rowsByLine[$lineKey]['custom_string'] = $value;
+                continue;
+            }
+
+            $rowsByLine[$lineKey]['custom_integer'] = (int) $value;
+        }
+    }
+
+    return collect($rowsByLine)
+        ->sortBy([
+            ['_sort_y', 'asc'],
+            ['_sort_x', 'asc'],
+        ])
+        ->map(function ($row) {
+            unset($row['_sort_y'], $row['_sort_x']);
+            return $row;
+        })
+        ->values()
+        ->all();
+}
+private function replaceEstimateCustomFields(int $estimateId, array $customFields): void
+{
+    DB::transaction(function () use ($estimateId, $customFields) {
+        EstimateCustomField::where('estimate_id', $estimateId)->delete();
+
+        foreach ($customFields as $customField) {
+            EstimateCustomField::create([
+                'estimate_id' => $estimateId,
+                'custom_string' => $customField['custom_string'],
+                'custom_integer' => $customField['custom_integer'],
+            ]);
+        }
+    });
 }
 
 public function viewSignedDocument($token)
