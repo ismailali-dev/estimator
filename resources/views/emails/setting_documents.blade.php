@@ -41,14 +41,14 @@
                                 </tr>
                                 <tr>
                                     <td align="center">
-                                        <a href="{{ $signingLink }}" style="display:inline-block; background: #d1ff61; border-radius:7px; color:#161021; font-size:15px; line-height:20px; font-weight:700; text-decoration:none; padding:14px 28px;">
+                                        <a href="{{ $signingLink }}" style="display:inline-block; background:#d1ff61; border-radius:7px; color:#161021; font-size:30px; line-height:30px; font-weight:700; text-decoration:none; padding:18px 36px;">
                                             View Document
                                         </a>
                                     </td>
                                 </tr>
                             </table>
                         </td>
-                    </tr>
+                    </tr>   
 
                     <tr>
                         <td style="padding:32px 0 0;">
