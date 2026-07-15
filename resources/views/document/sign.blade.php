@@ -169,7 +169,7 @@
         .preview-surface {
             margin: 1rem 0 1.2rem 0;
             border-radius: 1.25rem;
-            background: #fefaf5;
+            background: #ffffff;
             overflow: hidden;
             border: 0;
             transition: 0.2s;
@@ -192,8 +192,8 @@
 
         .field-overlay {
             position: absolute;
-            border: 2px solid #163746;
-            background: rgba(255, 255, 255, 0.78);
+            border: 0.5px solid rgba(22, 55, 70, 0.18);
+            background: rgba(255, 255, 255, 0.92);
             color: #e00000;
             display: flex;
             align-items: center;
@@ -211,6 +211,7 @@
         .field-overlay.is-signature {
             cursor: pointer;
             pointer-events: auto;
+            border: 0.5px solid rgba(22, 55, 70, 0.18);
             background: rgba(255, 255, 255, 0.92);
             padding: 0;
         }
@@ -231,6 +232,12 @@
             font-weight: 700;
             text-align: center;
             padding: 2px 4px;
+            resize: none;
+            overflow: hidden;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+            line-height: 1.1;
         }
 
         .field-overlay-input::placeholder {
@@ -388,7 +395,10 @@
             display: inline-flex;
             align-items: center;
             gap: 0.7rem;
-            background: transparent;`n            border: 0;`n            border-radius: 0;`n            padding: 0;
+            background: transparent;
+            border: 0;
+            border-radius: 0;
+            padding: 0;
             cursor: pointer;
             transition: all 0.2s ease;
             box-shadow: none;
@@ -842,9 +852,11 @@
                 padding: 0 2px;
                 font-size: inherit !important;
                 line-height: 1;
-                white-space: nowrap;
+                white-space: pre-wrap;
+                overflow-wrap: anywhere;
+                word-break: break-word;
                 overflow: hidden;
-                text-overflow: ellipsis;
+                text-overflow: clip;
             }
         }
 
@@ -1355,13 +1367,17 @@
             const pageRect = pageEl.getBoundingClientRect();
             if (!pageRect.width || !pageRect.height) return;
 
-            const rect = resolveFieldRect(field, pageEl.clientWidth, pageEl.clientHeight);
+            const fullPageHeight = pageEl.dataset.fullPageRatio
+                ? pageEl.clientWidth * Number(pageEl.dataset.fullPageRatio)
+                : pageEl.clientHeight;
+            const cropTop = fullPageHeight * Number(pageEl.dataset.cropTopRatio || 0);
+            const rect = resolveFieldRect(field, pageEl.clientWidth, fullPageHeight);
             const overlay = document.createElement('div');
             const isSignature = fieldLooksLikeSignature(field);
             const fieldId = fieldIdentity(field);
             overlay.className = `field-overlay${isSignature ? ' is-signature' : ' is-editable'}`;
             overlay.style.left = `${Math.max(0, rect.x)}px`;
-            overlay.style.top = `${Math.max(0, rect.y)}px`;
+            overlay.style.top = `${Math.max(0, rect.y - cropTop)}px`;
             overlay.style.width = `${Math.max(1, rect.width)}px`;
             overlay.style.height = `${Math.max(1, rect.height)}px`;
             overlay.style.fontSize = Math.max(7, Math.min(20, rect.height * 0.45)) + 'px';
@@ -1385,13 +1401,18 @@
                     overlay.addEventListener('click', () => openSignatureModal(documentId));
                 }
             } else {
-                const input = document.createElement('input');
+                const fieldType = String(field.type || '').toLowerCase();
+                const input = document.createElement(fieldType === 'custom_integer' ? 'input' : 'textarea');
                 input.className = 'field-overlay-input';
-                input.type = String(field.type || '').toLowerCase() === 'custom_integer' ? 'number' : 'text';
-                if (input.type === 'number') input.step = '1';
+                if (fieldType === 'custom_integer') {
+                    input.type = 'number';
+                    input.step = '1';
+                } else {
+                    input.rows = 2;
+                    input.wrap = 'soft';
+                }
                 input.dataset.fieldId = fieldId;
                 input.dataset.fieldKey = field.key || '';
-                const fieldType = String(field.type || '').toLowerCase();
                 input.placeholder = fieldType === 'custom_string'
                     ? 'Custom String'
                     : (fieldType === 'custom_integer' ? 'Custom Integer' : (field.label || field.key || ''));
@@ -1433,6 +1454,51 @@
             document.querySelectorAll('.pdf-renderer, .image-renderer').forEach(renderFieldOverlaysForContainer);
         }
 
+        function trimPdfPage(wrapper, canvas, scaled, fields) {
+            const sampleWidth = Math.min(240, canvas.width);
+            const sampleHeight = Math.max(1, Math.round(canvas.height * sampleWidth / canvas.width));
+            const sample = document.createElement('canvas');
+            sample.width = sampleWidth;
+            sample.height = sampleHeight;
+            const sampleContext = sample.getContext('2d', { willReadFrequently: true });
+            sampleContext.drawImage(canvas, 0, 0, sampleWidth, sampleHeight);
+            const pixels = sampleContext.getImageData(0, 0, sampleWidth, sampleHeight).data;
+            let firstRow = sampleHeight;
+            let lastRow = -1;
+
+            for (let y = 0; y < sampleHeight; y++) {
+                for (let x = 0; x < sampleWidth; x++) {
+                    const index = (y * sampleWidth + x) * 4;
+                    if (pixels[index + 3] > 10 && (pixels[index] < 248 || pixels[index + 1] < 248 || pixels[index + 2] < 248)) {
+                        firstRow = Math.min(firstRow, y);
+                        lastRow = Math.max(lastRow, y);
+                        break;
+                    }
+                }
+            }
+
+            if (lastRow < firstRow) return;
+
+            const padding = 10;
+            let cropTop = Math.max(0, (firstRow / sampleHeight) * scaled.height - padding);
+            let cropBottom = Math.min(scaled.height, ((lastRow + 1) / sampleHeight) * scaled.height + padding);
+
+            fields.forEach(field => {
+                const rect = resolveFieldRect(field, scaled.width, scaled.height);
+                cropTop = Math.min(cropTop, Math.max(0, rect.y - padding));
+                cropBottom = Math.max(cropBottom, Math.min(scaled.height, rect.y + rect.height + padding));
+            });
+
+            const croppedHeight = Math.max(1, cropBottom - cropTop);
+            wrapper.dataset.fullPageRatio = String(scaled.height / scaled.width);
+            wrapper.dataset.cropTopRatio = String(cropTop / scaled.height);
+            wrapper.style.aspectRatio = `${scaled.width} / ${croppedHeight}`;
+            canvas.style.position = 'absolute';
+            canvas.style.left = '0';
+            canvas.style.top = '0';
+            canvas.style.transform = `translateY(-${(cropTop / scaled.height) * 100}%)`;
+        }
+
         async function renderPdf(container) {
             const pdfUrl = container.dataset.pdfUrl;
             const openUrl = container.dataset.openUrl || pdfUrl;
@@ -1442,11 +1508,12 @@
             }
             try {
                 const pdf = await window.pdfjsLib.getDocument(pdfUrl).promise;
+                const fields = parseRendererFields(container);
                 container.innerHTML = '';
                 for (let i = 1; i <= pdf.numPages; i++) {
                     const page = await pdf.getPage(i);
                     const viewport = page.getViewport({ scale: 1 });
-                    const maxWidth = Math.min(container.clientWidth || 780, 780);
+                    const maxWidth = container.clientWidth || 1000;
                     const scale = maxWidth / viewport.width;
                     const scaled = page.getViewport({ scale });
                     const outputScale = Math.min((window.devicePixelRatio || 1) * 2, 4);
@@ -1458,11 +1525,15 @@
                     const wrapper = document.createElement('div');
                     wrapper.className = 'pdf-page';
                     wrapper.dataset.pageNumber = String(i);
+                    wrapper.style.width = `${scaled.width}px`;
+                    wrapper.style.maxWidth = '100%';
+                    wrapper.style.margin = '0 auto';
                     wrapper.appendChild(canvas);
                     container.appendChild(wrapper);
                     const context = canvas.getContext('2d');
                     context.setTransform(outputScale, 0, 0, outputScale, 0, 0);
                     await page.render({ canvasContext: context, viewport: scaled }).promise;
+                    trimPdfPage(wrapper, canvas, scaled, fields.filter(field => Number(field.page || field.page_number || 1) === i));
                 }
                 renderFieldOverlaysForContainer(container);
             } catch (err) {
