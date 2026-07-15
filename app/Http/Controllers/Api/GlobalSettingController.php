@@ -758,7 +758,7 @@ public function get_setting_documents(Request $request)
     $user = auth()->user();
 
   $documents = SettingDocument::where('user_id', $user->id)
-    ->whereNotIn('document_type', ['estimate', 'estimate_upload', 'sub_estimate_upload'])
+    ->whereNotIn('document_type', ['estimate', 'estimate_upload', 'sub_estimate_upload','material_list'])
     ->latest()
     ->get();
 
@@ -951,10 +951,19 @@ public function getAllDocuments(Request $request, $estimate)
     $estimateDocuments = SettingDocument::where('company_id', $user->company_id)
         ->where('user_id', $user->id)
         ->where('estimate_id', $estimate->id)
-        ->whereIn('document_type', ['estimate_upload', 'sub_estimate_upload', 'material_list'])
+        ->whereIn('document_type', ['estimate_upload', 'sub_estimate_upload'])
         ->orderBy('sort_order')
         ->orderBy('id')
         ->get();
+
+    // Sending the material list creates a stored snapshot for that signing
+    // session. Keep those snapshots, but expose only the latest one here.
+    $materialListDocument = SettingDocument::where('company_id', $user->company_id)
+        ->where('user_id', $user->id)
+        ->where('estimate_id', $estimate->id)
+        ->where('document_type', 'material_list')
+        ->orderByDesc('id')
+        ->first();
 
     $uploadedFileDocuments = SettingDocument::where('company_id', $user->company_id)
         ->where('user_id', $user->id)
@@ -972,13 +981,14 @@ public function getAllDocuments(Request $request, $estimate)
 
     $documents = $documents
         ->merge($estimateDocuments)
+        ->when($materialListDocument, fn ($documents) => $documents->push($materialListDocument))
         ->merge($uploadedFileDocuments)
         ->sortBy(fn ($document) => (int) $document->sort_order)
         ->values();
 
     $formattedDocuments = $this->formatSettingDocuments($documents);
 
-    if (!$estimateDocuments->contains('document_type', 'material_list')) {
+    if (!$materialListDocument) {
         $formattedDocuments[] = $this->buildMaterialListDocumentResponse($estimate, $user);
     }
 
@@ -1180,11 +1190,22 @@ private function createMaterialListSettingDocument(Estimate $estimate, User $use
         ])
         ->output();
 
-    $storedFilename = 'material_list_' . $estimate->id . '_' . time() . '.pdf';
+    $storedFilename = 'material_list_' . $estimate->id . '.pdf';
     $storedPath = 'setting_documents/material_lists/' . date('Y/m') . '/' . $storedFilename;
     Storage::disk('public')->put($storedPath, $pdfContent);
 
-    return SettingDocument::create([
+    $materialListDocument = SettingDocument::where('user_id', $user->id)
+        ->where('company_id', $user->company_id)
+        ->where('estimate_id', $estimate->id)
+        ->where('document_type', 'material_list')
+        ->orderByDesc('id')
+        ->first();
+
+    if (!$materialListDocument) {
+        $materialListDocument = new SettingDocument();
+    }
+
+    $materialListDocument->fill([
         'user_id' => $user->id,
         'company_id' => $user->company_id,
         'estimate_id' => $estimate->id,
@@ -1195,6 +1216,10 @@ private function createMaterialListSettingDocument(Estimate $estimate, User $use
         'signature_required' => false,
         'fields' => [],
     ]);
+
+    $materialListDocument->save();
+
+    return $materialListDocument;
 }
 
 private function formatSettingDocuments($documents): array
@@ -3284,6 +3309,7 @@ public function previewSigningDocument($token, SettingDocument $document)
 
     $fileType = strtolower($matchedDocument->file_type ?: pathinfo($absolutePath, PATHINFO_EXTENSION));
 
+
     if ($fileType === 'pdf') {
         return $this->streamInlineFile($absolutePath, 'application/pdf');
     }
@@ -3455,8 +3481,18 @@ private function getCompanyLogoAndFontColor($company, User $user, bool $forPdf =
 
     if ($invoiceSetting) {
         if ($invoiceSetting->logo) {
-            $logoPath = asset($invoiceSetting->logo);
-            $logoFilePath = public_path(ltrim($invoiceSetting->logo, '/'));
+            $logoFile = ltrim(str_ireplace(
+                ['storage/app/public/', 'storage/app/', 'storage/'],
+                '',
+                $invoiceSetting->logo
+            ), '/');
+            $logoPath = Storage::disk('public')->url($logoFile);
+
+            if (Storage::disk('public')->exists($logoFile)) {
+                $logoFilePath = Storage::disk('public')->path($logoFile);
+            } elseif (Storage::disk('local')->exists($logoFile)) {
+                $logoFilePath = Storage::disk('local')->path($logoFile);
+            }
         }
         if ($invoiceSetting->color) {
             $invoiceColor = strtolower(ltrim($invoiceSetting->color, '#'));
@@ -3489,7 +3525,7 @@ private function resolveWordPreviewPdfPath(SettingDocument $document, string $so
     }
 
     $lastModified = @filemtime($sourcePath) ?: time();
-    $previewPath = $previewDirectory . '/setting_document_' . $document->id . '_' . $lastModified . '.pdf';
+    $previewPath = $previewDirectory . '/setting_document_' . $document->id . '_' . $lastModified . '_v24.pdf';
 
     if (!is_file($previewPath)) {
         DocumentConverter::convertWordToPdf($sourcePath, $previewPath);

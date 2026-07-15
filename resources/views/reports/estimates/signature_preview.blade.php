@@ -23,28 +23,32 @@
             background: #fff;
         }
         .company-header {
-            text-align: center;
+            position: relative;
+            text-align: left;
             height: 132px;
             overflow: hidden;
         }
         .company-logo {
-            display: inline-block;
-            width: 84px;
-            height: 84px;
-            vertical-align: top;
-            margin: 0 8px 0 0;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100px;
+            height: 100px;
+            margin: 0;
         }
         .company-logo img {
-            width: 84px;
-            height: 84px;
+            width: 100px;
+            height: 100px;
             object-fit: contain;
         }
         .company-info {
-            display: inline-block;
-            vertical-align: top;
+            position: absolute;
+            top: 0;
+            left: 300px;
             text-align: left;
             line-height: 1.18;
             font-size: 21px;
+            white-space: nowrap;
         }
         .company-info h1 {
             margin: 0;
@@ -128,9 +132,9 @@
             text-transform: uppercase;
         }
         .spec-row {
-            display: table;
             width: 100%;
             table-layout: fixed;
+            border-collapse: collapse;
             clear: both;
             line-height: 1.35;
             margin: 4px 0;
@@ -139,14 +143,13 @@
         .spec-desc,
         .spec-qty,
         .spec-unit {
-            display: table-cell;
             vertical-align: top;
+            padding: 0;
         }
         .spec-no {
-            width: 36px;
+            width: 28px;
         }
         .spec-desc {
-            width: auto;
             padding-right: 12px;
             overflow-wrap: break-word;
             word-wrap: break-word;
@@ -258,12 +261,20 @@
                 <table class="group-table" cellspacing="0" cellpadding="0"><tr><td bgcolor="{{ $groupBackgroundColor }}" style="background-color: {{ $groupBackgroundColor }}; color: #fff; border: 1px solid #000; font-size: 16px;">{{ $currentProductGroup }}</td></tr></table>
             @endif
             @php $sno++; @endphp
-            <div class="spec-row">
-                <span class="spec-no">{{ $sno }}.</span>
-                <span class="spec-desc">{{ optional($sheet->code)->description }}</span>
-                <span class="spec-qty">{{ optional($sheet)->quantity }}</span>
-                <span class="spec-unit">{{ optional($sheet)->unit }}</span>
-            </div>
+            <table class="spec-row" cellspacing="0" cellpadding="0">
+                <colgroup>
+                    <col style="width: 28px;">
+                    <col>
+                    <col style="width: 78px;">
+                    <col style="width: 54px;">
+                </colgroup>
+                <tr>
+                    <td class="spec-no">{{ $sno }}.</td>
+                    <td class="spec-desc">{{ optional($sheet->code)->description }}</td>
+                    <td class="spec-qty">{{ optional($sheet)->quantity }}</td>
+                    <td class="spec-unit">{{ optional($sheet)->unit }}</td>
+                </tr>
+            </table>
         @endforeach
     </div>
 
