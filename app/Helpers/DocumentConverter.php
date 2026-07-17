@@ -194,7 +194,12 @@ class DocumentConverter
                 padding: 0 !important;
                 line-height: 32px !important;
                 text-align: center !important;
-            }            .word-header-wrap {
+            }
+            .specification-table td[bgcolor] p span {
+                position: relative;
+                top: -5px;
+            }
+            .word-header-wrap {
                 width: 100%;
                 text-align: center;
             }

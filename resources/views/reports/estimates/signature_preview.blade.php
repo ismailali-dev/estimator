@@ -14,37 +14,40 @@
             background: #fff;
         }
         .estimate-page {
-            width: 700px;
+            width: 100%;
             min-height: 980px;
             margin: 0 auto;
-            padding: 18px 46px 24px;
+            padding: 18px 24px 24px;
             box-sizing: border-box;
             position: relative;
             background: #fff;
         }
         .company-header {
-            position: relative;
-            text-align: left;
-            height: 132px;
+            text-align: center;
+            height: 180px;
             overflow: hidden;
         }
+        .company-header-table {
+            width: auto;
+            margin: 0 auto;
+            border-collapse: collapse;
+        }
+        .company-header-table td {
+            border: 0;
+            padding: 0;
+            vertical-align: top;
+            text-align: left;
+        }
         .company-logo {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100px;
-            height: 100px;
-            margin: 0;
+            width: 76px;
+            padding-right: 14px !important;
         }
         .company-logo img {
-            width: 100px;
-            height: 100px;
+            width: 70px;
+            height: 70px;
             object-fit: contain;
         }
         .company-info {
-            position: absolute;
-            top: 0;
-            left: 300px;
             text-align: left;
             line-height: 1.18;
             font-size: 21px;
@@ -122,14 +125,18 @@
             margin: 8px 0 8px;
         }
         .group-table td {
-            border: 1px solid #000;
-            color: #fff;
+            border: 0;
+            color: #000;
             font-weight: bold;
             font-size: 16px;
             text-align: center;
-            padding: 9px 8px;
-            line-height: 1;
-            text-transform: uppercase;
+            height: 32px;
+            padding: 0 8px;
+            line-height: 32px;
+        }
+        .group-table .group-title {
+            position: relative;
+            top: -5px;
         }
         .spec-row {
             width: 100%;
@@ -147,19 +154,20 @@
             padding: 0;
         }
         .spec-no {
-            width: 28px;
+            width: 3%;
         }
         .spec-desc {
+            width: 77%;
             padding-right: 12px;
             overflow-wrap: break-word;
             word-wrap: break-word;
         }
         .spec-qty {
-            width: 78px;
+            width: 10%;
             text-align: center;
         }
         .spec-unit {
-            width: 54px;
+            width: 10%;
             text-align: center;
         }
         .total-row {
@@ -205,22 +213,24 @@
 <body>
 <div class="estimate-page">
     <div class="company-header">
-        <div class="company-logo">
-            <img src="{{ $logoPath }}">
-        </div>
-        <div class="company-info">
-            <h1>{{ @$company->name }}</h1>
-            <div>{{ @$company->address }}</div>
-            <div>{{ @$user->phone }}</div>
-            <div>{{ @$user->email }}</div>
-        </div>
+        <table class="company-header-table" cellspacing="0" cellpadding="0">
+            <tr>
+                <td class="company-logo"><img src="{{ $logoPath }}"></td>
+                <td class="company-info">
+                    <h1>{{ @$company->name }}</h1>
+                    <div>{{ @$company->address }}</div>
+                    <div>{{ @$user->phone }}</div>
+                    <div>{{ @$user->email }}</div>
+                </td>
+            </tr>
+        </table>
     </div>
 
     <div class="estimate-title">Estimate</div>
 
     <div class="quote-line">
         <div class="left"><strong>Estimate No:</strong> {{ $estimate->key }}</div>
-        <div class="right"><strong>Estimate Date:</strong> {{ $estimate->created_at->format('M j, Y') }}</div>
+        <div class="right"><strong>Date:</strong> {{ $estimate->created_at->format('F j, Y') }}</div>
     </div>
 
     <div class="details">
@@ -258,15 +268,15 @@
                     $currentProductGroup = $productGroup;
                     $sno = 0;
                 @endphp
-                <table class="group-table" cellspacing="0" cellpadding="0"><tr><td bgcolor="{{ $groupBackgroundColor }}" style="background-color: {{ $groupBackgroundColor }}; color: #fff; border: 1px solid #000; font-size: 16px;">{{ $currentProductGroup }}</td></tr></table>
+                <table class="group-table" cellspacing="0" cellpadding="0"><tr><td bgcolor="{{ $groupBackgroundColor }}" style="background-color: {{ $groupBackgroundColor }};"><span class="group-title">{{ $currentProductGroup }}</span></td></tr></table>
             @endif
             @php $sno++; @endphp
             <table class="spec-row" cellspacing="0" cellpadding="0">
                 <colgroup>
-                    <col style="width: 28px;">
-                    <col>
-                    <col style="width: 78px;">
-                    <col style="width: 54px;">
+                    <col style="width: 3%;">
+                    <col style="width: 77%;">
+                    <col style="width: 10%;">
+                    <col style="width: 10%;">
                 </colgroup>
                 <tr>
                     <td class="spec-no">{{ $sno }}.</td>

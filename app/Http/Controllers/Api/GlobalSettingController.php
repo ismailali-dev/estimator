@@ -3524,8 +3524,11 @@ private function resolveWordPreviewPdfPath(SettingDocument $document, string $so
         mkdir($previewDirectory, 0755, true);
     }
 
-    $lastModified = @filemtime($sourcePath) ?: time();
-    $previewPath = $previewDirectory . '/setting_document_' . $document->id . '_' . $lastModified . '_v24.pdf';
+    $converterPath = (new \ReflectionClass(DocumentConverter::class))->getFileName();
+    $sourceHash = @hash_file('sha256', $sourcePath) ?: (string) (@filemtime($sourcePath) ?: time());
+    $converterHash = @hash_file('sha256', $converterPath) ?: (string) (@filemtime($converterPath) ?: time());
+    $previewHash = substr(hash('sha256', $sourceHash . '|' . $converterHash), 0, 20);
+    $previewPath = $previewDirectory . '/setting_document_' . $document->id . '_' . $previewHash . '.pdf';
 
     if (!is_file($previewPath)) {
         DocumentConverter::convertWordToPdf($sourcePath, $previewPath);
