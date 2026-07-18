@@ -431,11 +431,7 @@ class User extends \TCG\Voyager\Models\User
     // Normalize any legacy prefix down to the relative path under storage/app/public
     $file = str_ireplace(['storage/app/public/', 'storage/app/', 'storage/'], '', $this->sign);
 
-    if (Storage::disk('public')->exists($file)) {
-        return url('storage/' . $file);
-    }
-
-    return $this->sign;
+        return url('storage/' . ltrim($file, '/'));
 }
 
        protected static function booted()
