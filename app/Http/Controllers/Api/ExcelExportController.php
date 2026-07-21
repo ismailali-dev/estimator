@@ -19,6 +19,7 @@ use App\Models\Setting;
 use App\Models\SettingType;
 use Barryvdh\DomPDF\Facade\Pdf;
 use App\Models\EstimateSignature;
+use Illuminate\Support\Facades\Storage;
 
 class ExcelExportController extends ResponseController
 {
@@ -98,7 +99,9 @@ class ExcelExportController extends ResponseController
                     'Content-Disposition' => $disposition . '; filename="customer_material_list.pdf"',
                     'Content-Length' => $fileSize,
                     'X-File-Size' => $fileSize,
-                        'Cache-Control' => 'no-store, no-cache, must-revalidate',
+                    'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
+                    'Pragma' => 'no-cache',
+                    'Expires' => '0',
                 ]);
             }
         }
@@ -526,7 +529,9 @@ class ExcelExportController extends ResponseController
                         'Content-Disposition' => 'attachment; filename="' . $filename . '"', // Force download with the filename
                         'Content-Length' => $fileSize, // Include file size in the headers
                         'X-File-Size' => $fileSize, // Optional custom header for file size tracking
-                        'Cache-Control' => 'no-store, no-cache, must-revalidate', // Optional cache control
+                    'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
+                    'Pragma' => 'no-cache',
+                    'Expires' => '0', // Optional cache control
                     ];
 
                         // Return the PDF with headers
@@ -572,31 +577,50 @@ class ExcelExportController extends ResponseController
 
     protected function getCompanyLogoAndFontColor($company, $user)
 {
-    // Default values
-    $fontColor = '000000'; // Default font color
-    $logoPath = asset('assets/img/logo-old.png'); // Default logo path
+    $fontColor = '000000';
+    $logoFilePath = public_path('assets/img/logo-old.png');
+    $invoiceSetting = $company
+        ? UserInvoiceSetting::where('company_id', $company->id)->first()
+        : null;
 
-    // Fetch invoice settings for the company
-    $invoiceSetting = UserInvoiceSetting::where("company_id", $company->id)->first();
-
-    // If the user has a subscription and invoice settings exist
-    if ($invoiceSetting && $user->hasSubscription(Membership::SUBSCRIPTION_INVOICE)) {
-        // Check for a custom logo
+    if ($invoiceSetting) {
         if ($invoiceSetting->logo) {
-            $file = str_ireplace("app/", "", $invoiceSetting->logo);
-            $logoPath = asset($file); // Use custom logo
+            $logoFile = ltrim(str_ireplace(
+                ['storage/app/public/', 'storage/app/', 'storage/'],
+                '',
+                $invoiceSetting->logo
+            ), '/');
+
+            if (Storage::disk('public')->exists($logoFile)) {
+                $logoFilePath = Storage::disk('public')->path($logoFile);
+            } elseif (Storage::disk('local')->exists($logoFile)) {
+                $logoFilePath = Storage::disk('local')->path($logoFile);
+            }
         }
-        // Check for a custom font color
+
         if ($invoiceSetting->color) {
-            $fontColor = $invoiceSetting->color; // Use custom font color
+            $invoiceColor = strtolower(ltrim($invoiceSetting->color, '#'));
+            $fontColor = in_array($invoiceColor, ['fff', 'ffffff'], true)
+                ? '000000'
+                : $invoiceColor;
         }
     }
 
-    // Return both values
     return [
         'fontColor' => $fontColor,
-        'logoPath' => $logoPath,
+        'logoPath' => $this->imageDataUri($logoFilePath),
     ];
+}
+
+private function imageDataUri(string $filePath): string
+{
+    if (!is_file($filePath)) {
+        return asset('assets/img/logo-old.png');
+    }
+
+    $mimeType = mime_content_type($filePath) ?: 'image/png';
+
+    return 'data:' . $mimeType . ';base64,' . base64_encode(file_get_contents($filePath));
 }
 
 

@@ -17,7 +17,16 @@
         }
         .company-logo {
             width: 100px;
+            display: table-cell;
+            vertical-align: middle;
+        }
+        .company-logo img {
+            display: block;
+            width: 100px;
+            max-width: 100px;
+            max-height: 100px;
             height: auto;
+            object-fit: contain;
         }
         .company-info {
             display: table-cell;
@@ -105,7 +114,7 @@
 <div class="material-list-header">
     <div class="company-details">
         <div class="company-logo">
-            <img src="{{ $logoPath }}" alt="Company Logo" width="100%">
+            <img src="{{ $logoPath }}" alt="Company Logo">
         </div>
         <div class="company-info">
             <h2 style="margin:0px">{{ $company['name'] }}</h2>

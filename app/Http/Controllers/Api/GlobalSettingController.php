@@ -948,6 +948,19 @@ public function getAllDocuments(Request $request, $estimate)
         ->orderByDesc('id')
         ->first();
 
+    if (!$estimateDocument) {
+        try {
+            $estimateDocument = $this->createEstimateSettingDocument($estimate, $user);
+        } catch (\Throwable $exception) {
+            \Log::error('Unable to create estimate document while listing all documents', [
+                'estimate_id' => $estimate->id,
+                'user_id' => $user->id,
+                'company_id' => $user->company_id,
+                'message' => $exception->getMessage(),
+            ]);
+        }
+    }
+
     $estimateDocuments = SettingDocument::where('company_id', $user->company_id)
         ->where('user_id', $user->id)
         ->where('estimate_id', $estimate->id)
@@ -987,6 +1000,10 @@ public function getAllDocuments(Request $request, $estimate)
         ->values();
 
     $formattedDocuments = $this->formatSettingDocuments($documents);
+
+    if (!$estimateDocument) {
+        array_unshift($formattedDocuments, $this->buildEstimateDocumentResponse($estimate, $user));
+    }
 
     if (!$materialListDocument) {
         $formattedDocuments[] = $this->buildMaterialListDocumentResponse($estimate, $user);
@@ -1145,6 +1162,50 @@ private function resolveEstimateForDocumentRequest($estimate, $user): ?Estimate
         ->first();
 }
 
+private function buildEstimateDocumentResponse(Estimate $estimate, User $user): array
+{
+    $previewUrl = url('/api/export-doc/estimate/' . $estimate->id) . '?' . http_build_query([
+        'user_id' => $user->id,
+        'action' => 'preview',
+    ]);
+
+    return [
+        'id' => 'estimate_' . $estimate->id,
+        'estimate_id' => $estimate->id,
+        'document_type' => 'estimate',
+        'file_type' => 'pdf',
+        'file_url' => $previewUrl,
+        'preview_url' => $previewUrl,
+        'filled_preview_url' => $previewUrl,
+        'label' => 'Estimate ' . ($estimate->key ?: $estimate->id),
+        'sort_order' => 0,
+        'signature_required' => false,
+        'fields' => [],
+        'created_at' => null,
+    ];
+}
+private function createEstimateSettingDocument(Estimate $estimate, User $user): SettingDocument
+{
+    $storedFilename = 'estimate_' . $estimate->id . '_' . time() . '.pdf';
+    $storedPath = 'setting_documents/generated_estimates/' . date('Y/m') . '/' . $storedFilename;
+
+    Storage::disk('public')->put(
+        $storedPath,
+        $this->buildEstimatePreviewPdf($estimate, $user, app(EstimateService::class))
+    );
+
+    return SettingDocument::create([
+        'user_id' => $user->id,
+        'company_id' => $user->company_id,
+        'estimate_id' => $estimate->id,
+        'document_type' => 'estimate',
+        'file_path' => $storedPath,
+        'file_type' => 'pdf',
+        'document_name' => 'Estimate ' . ($estimate->key ?: $estimate->id),
+        'signature_required' => false,
+        'fields' => [],
+    ]);
+}
 private function buildMaterialListDocumentResponse(Estimate $estimate, User $user): array
 {
     $previewUrl = url('/api/export-doc/material/preview/' . $estimate->id) . '?' . http_build_query(['user_id' => $user->id]);
@@ -1165,7 +1226,7 @@ private function buildMaterialListDocumentResponse(Estimate $estimate, User $use
     ];
 }
 
-private function createMaterialListSettingDocument(Estimate $estimate, User $user): SettingDocument
+private function buildMaterialListPreviewPdf(Estimate $estimate, User $user): string
 {
     $downloadEmailService = new DownloadEmailService();
     $groupCodes = $downloadEmailService->downloadMaterialListData($estimate, $user);
@@ -1179,7 +1240,7 @@ private function createMaterialListSettingDocument(Estimate $estimate, User $use
         'email' => $user->email,
     ];
 
-    $pdfContent = Pdf::setOption(['isRemoteEnabled' => false])
+    return Pdf::setOption(['isRemoteEnabled' => false])
         ->loadView('reports.customer_material_list_email', [
             'user' => $user,
             'company' => $company,
@@ -1189,6 +1250,10 @@ private function createMaterialListSettingDocument(Estimate $estimate, User $use
             'groupCodes' => $groupCodes,
         ])
         ->output();
+}
+private function createMaterialListSettingDocument(Estimate $estimate, User $user): SettingDocument
+{
+    $pdfContent = $this->buildMaterialListPreviewPdf($estimate, $user);
 
     $storedFilename = 'material_list_' . $estimate->id . '.pdf';
     $storedPath = 'setting_documents/material_lists/' . date('Y/m') . '/' . $storedFilename;
@@ -1323,6 +1388,40 @@ private function buildFilledSettingDocumentPreviewPdf(SettingDocument $document,
 
     $tempFiles = [];
     $estimateId = $document->estimate_id ?: $this->resolveEstimateIdFromDocumentPath($document);
+    $previewSourcePath = $filePath;
+
+    // Generated estimate documents are snapshots. Rebuild their source PDF so
+    // filled-preview uses the same current estimate design as the email flow.
+    if ($document->document_type === 'estimate' && $estimateId) {
+        $estimate = Estimate::where('id', $estimateId)
+            ->where('company_id', $document->company_id)
+            ->first();
+        $user = User::with('company')->find($document->user_id);
+
+        if ($estimate && $user) {
+            $previewSourcePath = $tempDir . '/' . uniqid('estimate_preview_') . '.pdf';
+            file_put_contents(
+                $previewSourcePath,
+                $this->buildEstimatePreviewPdf($estimate, $user, app(EstimateService::class))
+            );
+            $tempFiles[] = $previewSourcePath;
+        }
+    } elseif ($document->document_type === 'material_list' && $estimateId) {
+        $estimate = Estimate::where('id', $estimateId)
+            ->where('company_id', $document->company_id)
+            ->first();
+        $user = User::with('company')->find($document->user_id);
+
+        if ($estimate && $user) {
+            $previewSourcePath = $tempDir . '/' . uniqid('material_list_preview_') . '.pdf';
+            file_put_contents(
+                $previewSourcePath,
+                $this->buildMaterialListPreviewPdf($estimate, $user)
+            );
+            $tempFiles[] = $previewSourcePath;
+        }
+    }
+
     $fieldContext = $this->buildDocumentFieldContext([
         'user_id' => $document->user_id,
         'company_id' => $document->company_id,
@@ -1333,7 +1432,15 @@ private function buildFilledSettingDocumentPreviewPdf(SettingDocument $document,
     ], $document->signed_at ?: now());
 
     try {
-        $this->appendDocumentToSignedPacket($pdf, $document, $tempFiles, $tempDir, false, $fieldContext);
+        $this->appendDocumentToSignedPacket(
+            $pdf,
+            $document,
+            $tempFiles,
+            $tempDir,
+            false,
+            $fieldContext,
+            $previewSourcePath
+        );
 
         if ($pdf->PageNo() === 0) {
             throw new \RuntimeException('No preview pages were generated.');
@@ -2089,9 +2196,9 @@ private function overlayDocumentFieldLabels(Fpdi $pdf, SettingDocument $document
     }
 }
 
-private function appendDocumentToSignedPacket(Fpdi $pdf, SettingDocument $document, array &$tempFiles, string $tempDir, bool $reserveSignatureSpace = false, array $fieldContext = [])
+private function appendDocumentToSignedPacket(Fpdi $pdf, SettingDocument $document, array &$tempFiles, string $tempDir, bool $reserveSignatureSpace = false, array $fieldContext = [], ?string $sourceFilePath = null)
 {
-    $filePath = $this->resolveDocumentAbsolutePath($document);
+    $filePath = $sourceFilePath ?: $this->resolveDocumentAbsolutePath($document);
     if (!$filePath) {
         throw new \RuntimeException('Source document file not found.');
     }
@@ -2992,6 +3099,14 @@ public function sendDocumentsByEmail(Request $request)
         foreach ($rawDocumentIds as $documentId) {
             if (ctype_digit($documentId)) {
                 $storedDocument = $storedDocuments->get((int) $documentId);
+
+                // A fresh estimate PDF is generated below when estimate_id is present.
+                // Do not also include a previously generated estimate snapshot from
+                // document_ids, otherwise the signing packet gets duplicate pages.
+                if ($request->filled('estimate_id') && $storedDocument?->document_type === 'estimate') {
+                    continue;
+                }
+
                 if ($storedDocument) {
                     $documents->push($storedDocument);
                     $documentIds[] = $storedDocument->id;
