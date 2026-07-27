@@ -187,7 +187,7 @@ class UserController extends ApiBaseController
                 'required',
                 'string',
                 'regex:/^\(\d{3}\) \d{3}-\d{4}$/', // Ensures the format matches (675) 975-9759
-                Rule::unique('users', 'phone')->ignore($request->user()->id), // Ensures uniqueness except for the current user
+                // Rule::unique('users', 'phone')->ignore($request->user()->id), // Ensures uniqueness except for the current user
             ],
             'company_name' => 'required|string',
             'company_address' => 'required|string',
