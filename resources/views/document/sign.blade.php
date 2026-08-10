@@ -312,9 +312,12 @@
         }
 
         .field-overlay .signed-badge img {
-            width: 92%;
+            width: calc(100% - 4.5rem);
             height: 82%;
+            margin-left: 4rem;
+            margin-right: 0.5rem;
             transform: scale(1.08);
+            transform-origin: center;
         }
         .loading-card, .error-card {
             background: #fffdf9;
@@ -733,6 +736,21 @@
             gap: 1rem;
             margin-top: 1.2rem;
         }
+
+        /* Keep the three signing actions in one balanced row on every screen. */
+        #signature-modal .modal-actions {
+            flex-direction: row;
+            flex-wrap: nowrap;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        #signature-modal .modal-actions .button {
+            flex: 1 1 0;
+            min-width: 0;
+            white-space: nowrap;
+        }
+
         .dropdown-group {
             display: flex;
             gap: 0.8rem;
@@ -828,6 +846,16 @@
             .modal-actions {
                 flex-direction: column;
                 align-items: stretch;
+            }
+            #signature-modal .modal-actions {
+                flex-direction: row;
+                align-items: center;
+                gap: 0.45rem;
+            }
+            #signature-modal .modal-actions .button {
+                padding-left: 0.45rem;
+                padding-right: 0.45rem;
+                font-size: 0.72rem;
             }
             .dropdown-group {
                 justify-content: space-between;
@@ -947,7 +975,7 @@
 
             <div class="submit-bar">
                 <button id="submit-all" type="button" class="button button-primary">
-                     {{ $documentsWithSignature > 0 ? 'Submit Signed ' : 'Confirm review' }}
+                     Submit
                 </button>
             </div>
         </div>
@@ -955,7 +983,7 @@
 
     @if($documentsWithSignature > 0)
         <div class="signature-instructions" style="max-width: 980px; margin: 2rem auto; text-align:center; color:#7f7264; font-size:0.85rem;">
-            <p>To complete the signing process, please ensure that you have added your signature to all required documents. Once all signatures are provided, click the "Submit Signed" button above to finalize your submission.</p>
+            <p>To complete the signing process, please ensure that you have added your signature to all required documents. Once all signatures are provided, click the "Submit" button above to finalize your submission.</p>
         </div>
     @endif
 
@@ -985,7 +1013,7 @@
                     <div class="brand">
                  <div class="">
             <img src="{{ asset('/assets/img/favicon.png') }}" alt="icon">
-        </div>                      
+        </div>
             <span>Estimater</span>
                     </div>
                     {{-- <button class="close-btn" id="closeModalBtn" aria-label="Close modal">✕</button> --}}
@@ -996,13 +1024,13 @@
                         <span class="badge-contracts">Contracts</span>
                     </div>
                     <div class="subtitle">
-                        Message from Contracts EZ Estimater 
+                        Message from EZ Estimater
                     </div>
                 </div>
                 <div class="message-body">
                     <div class="greeting">Hi,</div>
                     <div class="message-text">
-                        We have prepared and attached the Amended Service Order between {{ $signerName }} and EZ Estimater for your signature. 
+                        We have prepared and attached the Amended Service Order between {{ $signerName }} and EZ Estimater for your signature.
                         Please review and sign the document at your earliest convenience. <br>Thanks!
                     </div>
                     {{-- <div class="attachment-badge">
@@ -1058,6 +1086,7 @@
 
         const requiredDocumentIds = @json($requiredDocumentIds);
         const signatures = {};
+        const fieldSignatures = {};
         const signatureModes = {};
         const defaultSignatureCache = {};
         const defaultInitialCache = {};
@@ -1080,7 +1109,15 @@
         const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
         const submitButton = document.getElementById('submit-all');
         let activeDocumentId = null;
+        let activeFieldId = null;
+        let activeFieldKey = null;
+        let activeIsUserSignature = false;
+        let activeSignerName = defaultSignerName;
         let activeSignatureMode = 'name';
+
+        function activeSignatureKey() {
+            return activeFieldId ? `${activeDocumentId}:${activeFieldId}` : activeDocumentId;
+        }
 
         function formatToday() {
             const date = new Date();
@@ -1139,17 +1176,17 @@
         }
 
         function defaultSignatureForDocument(documentId) {
-            const key = String(documentId || 'default');
+            const key = activeSignatureKey() || String(documentId || 'default');
             if (!defaultSignatureCache[key]) {
-                defaultSignatureCache[key] = buildDefaultSignatureDataUrl(defaultSignerName);
+                defaultSignatureCache[key] = buildDefaultSignatureDataUrl(activeSignerName);
             }
             return defaultSignatureCache[key];
         }
 
         function defaultInitialForDocument(documentId) {
-            const key = String(documentId || 'default');
+            const key = activeSignatureKey() || String(documentId || 'default');
             if (!defaultInitialCache[key]) {
-                defaultInitialCache[key] = buildDefaultSignatureDataUrl(defaultSignerName, true);
+                defaultInitialCache[key] = buildDefaultSignatureDataUrl(activeSignerName, true);
             }
             return defaultInitialCache[key];
         }
@@ -1194,7 +1231,11 @@
                 signaturePad.clear();
                 return;
             }
-            paintSignatureToCanvas(signatureModes[activeDocumentId] === 'draw' ? signatures[activeDocumentId] : null);
+            const signatureKey = activeSignatureKey();
+            const savedSignature = activeFieldId
+                ? fieldSignatures[activeDocumentId]?.[activeFieldId]
+                : signatures[activeDocumentId];
+            paintSignatureToCanvas(signatureModes[signatureKey] === 'draw' ? savedSignature : null);
         }
         function resizeCanvasAndRestore() {
             const rect = signatureCanvas.getBoundingClientRect();
@@ -1217,12 +1258,20 @@
             return copyCanvas.toDataURL('image/png');
         }
 
-        function openSignatureModal(documentId) {
+        function openSignatureModal(documentId, field = null) {
             activeDocumentId = String(documentId);
-            activeSignatureMode = signatureModes[activeDocumentId] || 'name';
+            activeFieldId = field ? fieldIdentity(field) : null;
+            activeFieldKey = field ? String(field.key || '') : null;
+            activeIsUserSignature = Boolean(field && isUserSignatureField(field));
+            activeSignerName = activeIsUserSignature
+                ? (prefilledUserSignature.text || 'Contractor')
+                : defaultSignerName;
+            activeSignatureMode = signatureModes[activeSignatureKey()] || 'name';
             const panel = document.querySelector(`[data-sign-panel="${activeDocumentId}"]`);
             const titleEl = panel?.querySelector('.signature-title');
-            document.getElementById('modal-title').innerText = titleEl ? titleEl.innerText : 'Sign document';
+            document.getElementById('modal-title').innerText = field
+                ? (field.label || (activeIsUserSignature ? 'Contractor Signature' : 'Customer Signature'))
+                : (titleEl ? titleEl.innerText : 'Sign document');
             signatureModal.classList.add('is-open');
             document.body.classList.add('modal-open');
             requestAnimationFrame(() => {
@@ -1234,6 +1283,10 @@
             signatureModal.classList.remove('is-open');
             document.body.classList.remove('modal-open');
             activeDocumentId = null;
+            activeFieldId = null;
+            activeFieldKey = null;
+            activeIsUserSignature = false;
+            activeSignerName = defaultSignerName;
             signaturePad.clear();
         }
 
@@ -1275,25 +1328,38 @@
         });
         document.getElementById('save-signature').addEventListener('click', () => {
             if (!activeDocumentId) return;
+            const signatureKey = activeSignatureKey();
+            let savedSignature;
+
             if (activeSignatureMode === 'name') {
-                signatures[activeDocumentId] = defaultSignatureForDocument(activeDocumentId);
-                signatureModes[activeDocumentId] = 'name';
+                savedSignature = defaultSignatureForDocument(activeDocumentId);
             } else if (activeSignatureMode === 'initial') {
-                signatures[activeDocumentId] = defaultInitialForDocument(activeDocumentId);
-                signatureModes[activeDocumentId] = 'initial';
+                savedSignature = defaultInitialForDocument(activeDocumentId);
             } else {
                 if (signaturePad.isEmpty()) {
                     alert('Please draw your signature before saving.');
                     return;
                 }
-                signatures[activeDocumentId] = exportDataUrl();
-                signatureModes[activeDocumentId] = 'draw';
+                savedSignature = exportDataUrl();
             }
-            updatePreview(activeDocumentId, signatures[activeDocumentId]);
+
+            signatureModes[signatureKey] = activeSignatureMode;
+            if (activeFieldId) {
+                if (!fieldSignatures[activeDocumentId]) fieldSignatures[activeDocumentId] = {};
+                fieldSignatures[activeDocumentId][activeFieldId] = savedSignature;
+                if (activeFieldKey) fieldSignatures[activeDocumentId][activeFieldKey] = savedSignature;
+
+                // Customer signatures satisfy the document signing requirement.
+                // Contractor signatures remain independent and may be prefilled.
+                if (!activeIsUserSignature) signatures[activeDocumentId] = savedSignature;
+            } else {
+                signatures[activeDocumentId] = savedSignature;
+                updatePreview(activeDocumentId, savedSignature);
+            }
+
             renderAllFieldOverlays();
             closeModal();
         });
-
         signatureModal.addEventListener('click', (e) => { if (e.target === signatureModal) closeModal(); });
         window.addEventListener('resize', () => {
             if (signatureModal.classList.contains('is-open')) requestAnimationFrame(resizeCanvasAndRestore);
@@ -1370,23 +1436,32 @@
             overlay.style.fontSize = Math.max(7, Math.min(20, rect.height * 0.45)) + 'px';
 
             if (isSignature) {
+                const documentFieldSignatures = fieldSignatures[String(documentId)] || {};
+                const selectedFieldSignature = documentFieldSignatures[fieldId]
+                    || (field.key ? documentFieldSignatures[field.key] : null);
+
                 if (isUserSignatureField(field)) {
-                    if (prefilledUserSignature.url) {
+                    if (selectedFieldSignature) {
+                        overlay.innerHTML = signedBadgeHtml(selectedFieldSignature, documentId);
+                    } else if (prefilledUserSignature.url) {
                         overlay.innerHTML = signedBadgeHtml(prefilledUserSignature.url, documentId);
                     } else {
-                        overlay.textContent = prefilledUserSignature.text || 'User Signature';
+                        overlay.textContent = prefilledUserSignature.text
+                            || field.label
+                            || 'Contractor Signature';
                     }
-                    overlay.title = 'User signature';
+                    overlay.title = 'Click to edit contractor signature';
                 } else {
-                    const signatureImage = signatures[String(documentId)];
-                    if (signatureImage) {
-                        overlay.innerHTML = signedBadgeHtml(signatureImage, documentId);
+                    const customerSignature = selectedFieldSignature || signatures[String(documentId)];
+                    if (customerSignature) {
+                        overlay.innerHTML = signedBadgeHtml(customerSignature, documentId);
                     } else {
                         overlay.textContent = field.label || field.key || field.type || '';
                     }
-                    overlay.title = 'Click to sign';
-                    overlay.addEventListener('click', () => openSignatureModal(documentId));
+                    overlay.title = 'Click to add customer signature';
                 }
+
+                overlay.addEventListener('click', () => openSignatureModal(documentId, field));
             } else {
                 const fieldType = String(field.type || '').toLowerCase();
                 const input = document.createElement(fieldType === 'custom_integer' ? 'input' : 'textarea');
@@ -1554,7 +1629,7 @@
                 const response = await fetch('/document/sign/{{ $token }}', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken },
-                    body: JSON.stringify({ signatures, field_values: fieldValues })
+                    body: JSON.stringify({ signatures, field_signatures: fieldSignatures, field_values: fieldValues })
                 });
                 const result = await response.json();
                 if (!response.ok) throw new Error(result.message || 'Submission error');
@@ -1562,7 +1637,7 @@
             } catch (err) {
                 alert(err.message);
                 submitButton.disabled = false;
-                submitButton.textContent = 'Submit Signed';
+                submitButton.textContent = 'Submit';
             }
         }
 
