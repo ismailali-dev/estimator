@@ -6,7 +6,9 @@
     <title>Customer Material List</title>
     <style>
         body {
-            font-family: 'Helvetica', sans-serif;
+            font-family: Helvetica, Arial, sans-serif;
+            font-size: 14px;
+            line-height: 1.2;
             text-align: center;
             margin: 0;
         }
@@ -33,9 +35,30 @@
             vertical-align: middle;
             padding-left: 10px;
             text-align: left;
+            font-size: 14px;
+            line-height: 1.2;
+            white-space: nowrap;
         }
-        h2, h3 {
-            margin: 5px 0;
+        .company-info h2 {
+            margin: 0;
+            padding: 0;
+            font-family: Helvetica, Arial, sans-serif;
+            font-size: 21px;
+            line-height: 1.2;
+            font-weight: 700;
+        }
+        .company-info p {
+            margin: 0;
+            font-size: 14px;
+            line-height: 1.2;
+        }
+        .sales-report-title h3 {
+            margin: 5px 0 14px;
+            font-family: Helvetica, Arial, sans-serif;
+            font-size: 16px;
+            line-height: 1.2;
+            font-weight: 700;
+            text-align: center;
         }
         table {
             width: 100%;

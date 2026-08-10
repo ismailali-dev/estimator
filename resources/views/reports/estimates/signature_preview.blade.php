@@ -8,7 +8,7 @@
         @page { margin: 0; }
         html, body { margin: 0; padding: 0; }
         body {
-            font-family: "Times New Roman", Times, serif;
+            font-family: Helvetica, Arial, sans-serif;
             font-size: 14px;
             color: #000;
             background: #fff;
@@ -24,8 +24,7 @@
         }
         .company-header {
             text-align: center;
-            height: 180px;
-            overflow: hidden;
+            margin-bottom: 20px;
         }
         .company-header-table {
             width: auto;
@@ -39,32 +38,37 @@
             text-align: left;
         }
         .company-logo {
-            width: 76px;
-            padding-right: 14px !important;
+            width: 100px;
+            padding-right: 10px !important;
+            vertical-align: middle !important;
         }
         .company-logo img {
-            width: 70px;
-            height: 70px;
+            display: block;
+            width: 100px;
+            max-width: 100px;
+            max-height: 100px;
+            height: auto;
             object-fit: contain;
         }
         .company-info {
             text-align: left;
-            line-height: 1.18;
-            font-size: 21px;
+            vertical-align: middle !important;
+            line-height: 1.2;
+            font-size: 14px;
             white-space: nowrap;
         }
         .company-info h1 {
             margin: 0;
             padding: 0;
-            font-size: 27px;
-            line-height: 1.05;
+            font-size: 21px;
+            line-height: 1.2;
             font-weight: bold;
         }
         .estimate-title {
-            margin: 0 0 14px;
+            margin: 5px 0 14px;
             text-align: center;
-            font-size: 27px;
-            line-height: 1;
+            font-size: 16px;
+            line-height: 1.2;
             font-weight: bold;
         }
         .quote-line {
