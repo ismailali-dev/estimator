@@ -272,9 +272,9 @@ class UserController extends ApiBaseController
         }
 
         $path = 'user/signatures/' . Str::random(40) . '.' . $extension;
-        Storage::put($path, $imageData);
+        Storage::disk('public')->put($path, $imageData);
 
-        return 'storage/app/' . $path;
+        return 'storage/' . $path;
     }
 
     public function invoice_setting(Request $request):JsonResponse

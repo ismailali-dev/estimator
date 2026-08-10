@@ -423,15 +423,35 @@ class User extends \TCG\Voyager\Models\User
         return null;
     }
 
-    // Already a full URL (e.g. external or data URL)
-    if (filter_var($this->sign, FILTER_VALIDATE_URL)) {
+    if (str_starts_with($this->sign, 'data:image/')) {
         return $this->sign;
     }
 
-    // Normalize any legacy prefix down to the relative path under storage/app/public
-    $file = str_ireplace(['storage/app/public/', 'storage/app/', 'storage/'], '', $this->sign);
+    $path = parse_url($this->sign, PHP_URL_PATH) ?: $this->sign;
+    $path = ltrim(str_replace('\\', '/', $path), '/');
+    $baseUrl = request()->getSchemeAndHttpHost();
 
-        return url('storage/' . ltrim($file, '/'));
+    if (str_starts_with($path, 'storage/app/public/')) {
+        return $baseUrl . '/storage/' . substr($path, strlen('storage/app/public/'));
+    }
+
+    if (str_starts_with($path, 'storage/app/')) {
+        return $baseUrl . '/' . $path;
+    }
+
+    if (str_starts_with($path, 'storage/')) {
+        $relativePath = substr($path, strlen('storage/'));
+
+        if (Storage::disk('local')->exists($relativePath) && !Storage::disk('public')->exists($relativePath)) {
+            return $baseUrl . '/storage/app/' . $relativePath;
+        }
+
+        return $baseUrl . '/' . $path;
+    }
+
+    return filter_var($this->sign, FILTER_VALIDATE_URL)
+        ? $this->sign
+        : $baseUrl . '/storage/' . $path;
 }
 
        protected static function booted()

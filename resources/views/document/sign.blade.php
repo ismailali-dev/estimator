@@ -202,7 +202,7 @@
             align-items: center;
             justify-content: center;
             text-align: center;
-            font-family: Georgia, serif;
+            font-family: Arial, Helvetica, sans-serif;
             font-weight: 700;
             line-height: 1.05;
             padding: 2px;
@@ -259,24 +259,30 @@
         .signed-badge {
             position: relative;
             display: inline-flex;
-            flex-direction: column;
+            align-items: center;
             justify-content: center;
             min-width: 190px;
             min-height: 58px;
-            padding: 0.35rem 0.75rem 0.28rem;
+            padding: 0;
             border: 2px solid #5a4fff;
             border-radius: 0.45rem;
             background: #fff;
             color: #1f2933;
             font-family: Arial, sans-serif;
             line-height: 1;
+            overflow: hidden;
+        }
+
+        .signed-badge-code {
+            display: none;
         }
 
         .signed-badge-label {
             position: absolute;
-            top: -0.58rem;
-            left: 1.8rem;
-            padding: 0 0.18rem;
+            top: 6px;
+            left: 1rem;
+            z-index: 2;
+            padding: 0 0.2rem;
             background: #fff;
             color: #1f2933;
             font-size: 0.66rem;
@@ -284,52 +290,32 @@
         }
 
         .signed-badge img {
-            width: 150px;
-            max-width: 100%;
-            height: 32px;
+            width: 100%;
+            max-width: none;
+            height: 100%;
             object-fit: contain;
-            object-position: left center;
+            object-position: center;
             display: block;
-        }
-
-        .signed-badge-code {
-            max-width: 150px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            color: #4b5563;
-            font-size: 0.58rem;
-            font-weight: 600;
-            letter-spacing: 0;
+            transform: scale(1.15);
+            transform-origin: center;
         }
 
         .field-overlay .signed-badge {
-            width: 100%;
-            height: 100%;
+            width: 104%;
+            height: 115%;
             min-width: 0;
             min-height: 0;
-            padding: 0.18rem 0.35rem 0.12rem;
+            padding: 0;
             border-width: 2px;
             border-radius: 0.35rem;
-            transform: scale(0.96);
-        }
-
-        .field-overlay .signed-badge-label {
-            top: -0.43rem;
-            left: 1rem;
-            font-size: 0.46rem;
+            transform: translate(-2%, -7.5%);
         }
 
         .field-overlay .signed-badge img {
-            width: 100%;
-            height: calc(100% - 12px);
+            width: 92%;
+            height: 82%;
+            transform: scale(1.08);
         }
-
-        .field-overlay .signed-badge-code {
-            max-width: 100%;
-            font-size: 0.42rem;
-        }
-
         .loading-card, .error-card {
             background: #fffdf9;
             border-radius: 1.25rem;
@@ -944,7 +930,6 @@
                                                     <span class="signed-badge">
                                                         <span class="signed-badge-label">Signed by:</span>
                                                         <span class="signature-preview-label">Add your mark</span>
-                                                        <span class="signed-badge-code">pending signature</span>
                                                     </span>
                                                 </div>
                                                 <div class="signed-submit-date" data-signature-date="{{ $document->id }}">—</div>
@@ -1116,7 +1101,6 @@
                 <span class="signed-badge">
                     <span class="signed-badge-label">Signed by:</span>
                     <img src="${dataUrl}" alt="signature">
-                    <span class="signed-badge-code">${signatureReference(documentId)}...</span>
                 </span>
             `;
         }
@@ -1390,7 +1374,7 @@
                     if (prefilledUserSignature.url) {
                         overlay.innerHTML = signedBadgeHtml(prefilledUserSignature.url, documentId);
                     } else {
-                        overlay.textContent = prefilledUserSignature.text || field.value || field.label || field.key || '';
+                        overlay.textContent = prefilledUserSignature.text || 'User Signature';
                     }
                     overlay.title = 'User signature';
                 } else {

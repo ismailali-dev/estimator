@@ -2261,7 +2261,8 @@ private function buildDocumentFieldContext(array $sessionData, $signedAt): array
     );
     $companyState = $this->resolveStateDisplayValue($this->firstFilled(optional($company)->state, optional($company)->state_id, optional($contractorAddress)->state_id));
     $companyZipCode = $this->firstFilled(optional($company)->zip_code, optional($company)->zip, optional($contractorAddress)->zip_code);
-    $estimatorName = optional($contractorUser)->name ?: trim((optional($contractorUser)->first_name ?: '') . ' ' . (optional($contractorUser)->last_name ?: ''));
+    $estimatorName = trim((optional($contractorUser)->first_name ?: '') . ' ' . (optional($contractorUser)->last_name ?: ''));
+    $estimatorName = $estimatorName !== '' ? $estimatorName : 'User';
     $propertyAddress = $this->firstFilled(optional($estimate)->property_address, optional($estimate)->project_address, optional($estimate)->work_address, optional($customer)->address);
     $propertyCity = $this->resolveCityDisplayValue($this->firstFilled(optional($estimate)->property_city, optional($estimate)->project_city, $customerCity), $this->firstFilled(optional($estimate)->property_state, optional($estimate)->project_state, optional($customer)->state));
     $propertyState = $this->resolveStateDisplayValue($this->firstFilled(optional($estimate)->property_state, optional($estimate)->project_state, $customerState));
@@ -2428,7 +2429,7 @@ private function hydrateSigningDocumentsWithResolvedFieldValues($documents, arra
     return $documents->map(function ($document) use ($fieldContext) {
         $document->fields = collect($this->normalizeDocumentFields($document->fields ?? []))
             ->map(function ($field) use ($fieldContext, $document) {
-                if (($field['type'] ?? 'text') !== 'signature' && empty($field['value'])) {
+                if (($field['type'] ?? 'text') !== 'signature' && !$this->isManualCustomDocumentField($field) && empty($field['value'])) {
                     $field['value'] = $this->resolveDocumentFieldValue($field, $fieldContext, (int) $document->id);
                 }
 
@@ -2495,10 +2496,10 @@ private function overlayDocumentFields(Fpdi $pdf, ?SettingDocument $document, in
 
 private function drawSignedSignatureBadge(Fpdi $pdf, array $rect, ?string $signatureImagePath, string $reference, ?string $signatureText = null): void
 {
-    $badgeX = $rect['x'] + max(0.5, $rect['width'] * 0.02);
-    $badgeY = $rect['y'] + max(1.2, $rect['height'] * 0.08);
-    $badgeWidth = max(12, $rect['width'] * 0.62);
-    $badgeHeight = max(8, $rect['height'] * 0.82);
+    $badgeX = $rect['x'];
+    $badgeY = max(0, $rect['y'] - ($rect['height'] * 0.05));
+    $badgeWidth = max(12, $rect['width']);
+    $badgeHeight = max(8, $rect['height'] * 1.1);
 
     $pdf->SetFillColor(255, 255, 255);
     $pdf->SetDrawColor(90, 79, 255);
@@ -2509,7 +2510,7 @@ private function drawSignedSignatureBadge(Fpdi $pdf, array $rect, ?string $signa
     $pdf->SetFont('Helvetica', 'B', max(5.5, min(7.5, $badgeHeight * 0.16)));
     $labelWidth = min($badgeWidth * 0.48, max(14, $pdf->GetStringWidth($label) + 3));
     $labelX = $badgeX + min(8, $badgeWidth * 0.16);
-    $labelY = $badgeY - 1.1;
+    $labelY = $badgeY + 1;
     $pdf->SetFillColor(255, 255, 255);
     $pdf->Rect($labelX - 0.7, $labelY - 0.2, $labelWidth, 2.8, 'F');
     $pdf->SetTextColor(18, 27, 38);
@@ -2519,23 +2520,18 @@ private function drawSignedSignatureBadge(Fpdi $pdf, array $rect, ?string $signa
     if ($signatureImagePath && file_exists($signatureImagePath)) {
         $pdf->Image(
             $signatureImagePath,
-            $badgeX + 2.5,
-            $badgeY + max(2, $badgeHeight * 0.16),
-            $badgeWidth - 5,
-            max(4, $badgeHeight * 0.48),
+            $badgeX + 2,
+            $badgeY + 3,
+            $badgeWidth - 4,
+            $badgeHeight - 5,
             'PNG'
         );
     } elseif ($signatureText) {
         $pdf->SetFont('Helvetica', 'I', max(8, min(14, $badgeHeight * 0.32)));
         $pdf->SetTextColor(18, 27, 38);
-        $pdf->SetXY($badgeX + 2.5, $badgeY + max(2, $badgeHeight * 0.22));
-        $pdf->Cell($badgeWidth - 5, max(4, $badgeHeight * 0.35), utf8_decode($signatureText), 0, 0, 'L');
+        $pdf->SetXY($badgeX + 2, $badgeY + ($badgeHeight * 0.28));
+        $pdf->Cell($badgeWidth - 4, max(4, $badgeHeight * 0.4), utf8_decode($signatureText), 0, 0, 'C');
     }
-
-    $pdf->SetFont('Helvetica', 'B', max(4.5, min(6.2, $badgeHeight * 0.13)));
-    $pdf->SetTextColor(75, 85, 99);
-    $pdf->SetXY($badgeX + 2.5, $badgeY + $badgeHeight - 3.2);
-    $pdf->Cell($badgeWidth - 5, 2.5, strtoupper($reference) . '...', 0, 0, 'L');
 }
 
 private function signatureReference(SettingDocument $document): string
@@ -2593,11 +2589,45 @@ private function resolveDocumentFieldValue(array $field, array $fieldContext, ?i
         return (string) $field['value'];
     }
 
-    $key = Str::slug((string) ($field['key'] ?? $field['label'] ?? ''), '_');
+    if ($this->isManualCustomDocumentField($field)) {
+        return '';
+    }
+
     $values = $fieldContext['values'] ?? [];
 
-    if (array_key_exists($key, $values)) {
-        return (string) ($values[$key] ?? '');
+    // Some standard fields have a generic key while their label identifies
+    // the database value to prefill, so resolve against both key and label.
+    $keys = collect([
+        Str::slug((string) ($field['key'] ?? ''), '_'),
+        Str::slug((string) ($field['label'] ?? ''), '_'),
+    ])->filter()->unique()->values();
+
+    foreach ($keys as $candidateKey) {
+        if (array_key_exists($candidateKey, $values)) {
+            return (string) ($values[$candidateKey] ?? '');
+        }
+    }
+
+    $key = (string) ($keys->first(fn ($candidateKey) => !in_array($candidateKey, ['custom_string', 'custom_integer', 'text'], true)) ?? $keys->first() ?? '');
+
+    if (Str::contains($key, ['phone'])) {
+        return (string) ($values[Str::contains($key, ['company', 'contractor', 'user']) ? 'company_phone' : 'customer_phone'] ?? '');
+    }
+
+    if (Str::contains($key, ['email'])) {
+        return (string) ($values[Str::contains($key, ['company', 'contractor', 'user']) ? 'company_email' : 'customer_email'] ?? '');
+    }
+
+    if (Str::contains($key, ['zip', 'postal'])) {
+        return (string) ($values[Str::contains($key, ['company', 'contractor']) ? 'company_zip_code' : 'customer_zip_code'] ?? '');
+    }
+
+    if (Str::contains($key, ['city'])) {
+        return (string) ($values[Str::contains($key, ['company', 'contractor']) ? 'company_city' : 'customer_city'] ?? '');
+    }
+
+    if (Str::contains($key, ['state'])) {
+        return (string) ($values[Str::contains($key, ['company', 'contractor']) ? 'company_state' : 'customer_state'] ?? '');
     }
 
     if (Str::contains($key, ['grand_total', 'total', 'price'])) {
@@ -2643,6 +2673,20 @@ private function resolveDocumentFieldValue(array $field, array $fieldContext, ?i
     return '';
 }
 
+private function isManualCustomDocumentField(array $field): bool
+{
+    $type = Str::slug((string) ($field['type'] ?? 'text'), '_');
+
+    if (!in_array($type, ['custom_string', 'custom_integer'], true)) {
+        return false;
+    }
+
+    $key = Str::slug((string) ($field['key'] ?? ''), '_');
+    $label = Str::slug((string) ($field['label'] ?? ''), '_');
+    $genericNames = ['', 'custom_string', 'custom_integer', 'custom_int', 'string', 'integer'];
+
+    return in_array($key, $genericNames, true) && in_array($label, $genericNames, true);
+}
 private function resolveSubmittedDocumentFieldValue(array $field, array $fieldContext, int $documentId): ?string
 {
     $submittedValues = $fieldContext['field_values'] ?? [];
@@ -2677,9 +2721,13 @@ private function resolveFieldSignaturePath(SettingDocument $document, array $fie
     $relativePath = $paths[$fieldId] ?? $paths[$fieldKey] ?? null;
 
     if ($this->isUserSignatureField($field)) {
-        $relativePath = $relativePath ?: $this->resolveUserSignatureRelativePath($fieldContext['user'] ?? null);
+        if ($relativePath) {
+            return storage_path('app/public/' . $relativePath);
+        }
 
-        return $relativePath ? storage_path('app/public/' . $relativePath) : null;
+        $signatureFile = $this->resolveUserSignatureFile($fieldContext['user'] ?? null);
+
+        return $signatureFile['absolute_path'] ?? null;
     }
 
     $relativePath = $relativePath ?: $document->signature_path;
@@ -2694,7 +2742,7 @@ private function isUserSignatureField(array $field): bool
     return in_array($key, ['esign_user', 'user_signature', 'contractor_signature'], true);
 }
 
-private function resolveUserSignatureRelativePath($user): ?string
+private function resolveUserSignatureFile($user): ?array
 {
     $sign = trim((string) optional($user)->sign);
 
@@ -2703,23 +2751,67 @@ private function resolveUserSignatureRelativePath($user): ?string
     }
 
     $path = parse_url($sign, PHP_URL_PATH) ?: $sign;
-    $path = ltrim(str_ireplace(['storage/app/public/', 'storage/app/', '/storage/', 'storage/'], '', $path), '/\\');
+    $normalizedPath = ltrim(str_replace('\\', '/', $path), '/');
+    $isLocalPath = Str::startsWith($normalizedPath, 'storage/app/')
+        && !Str::startsWith($normalizedPath, 'storage/app/public/');
+    $relativePath = ltrim(str_ireplace(['storage/app/public/', 'storage/app/', 'storage/'], '', $normalizedPath), '/');
+    $diskOrder = $isLocalPath ? ['local', 'public'] : ['public', 'local'];
 
-    return Storage::disk('public')->exists($path) ? $path : null;
+    foreach ($diskOrder as $disk) {
+        if (Storage::disk($disk)->exists($relativePath)) {
+            return [
+                'disk' => $disk,
+                'path' => $relativePath,
+                'absolute_path' => Storage::disk($disk)->path($relativePath),
+            ];
+        }
+    }
+
+    return null;
 }
 
 private function resolveUserSignatureDisplayText($user): string
 {
-    $name = trim((string) (optional($user)->name ?: trim((optional($user)->first_name ?: '') . ' ' . (optional($user)->last_name ?: ''))));
-    $sign = trim((string) optional($user)->sign);
+    $name = trim((string) ((optional($user)->first_name ?: '') . ' ' . (optional($user)->last_name ?: '')));
 
-    if ($sign === '' || $this->resolveUserSignatureRelativePath($user) || filter_var($sign, FILTER_VALIDATE_URL) || Str::startsWith($sign, 'data:')) {
-        return $name;
-    }
-
-    return $sign;
+    return $name !== '' ? $name : 'User';
 }
 
+private function resolveUserSignatureRenderableUrl($user): ?string
+{
+    $signatureFile = $this->resolveUserSignatureFile($user);
+    if ($signatureFile) {
+        $baseUrl = request()->getSchemeAndHttpHost();
+
+        return $signatureFile['disk'] === 'local'
+            ? $baseUrl . '/storage/app/' . $signatureFile['path']
+            : $baseUrl . '/storage/' . $signatureFile['path'];
+    }
+
+    $sign = trim((string) optional($user)->sign);
+    if ($sign === '') {
+        return null;
+    }
+
+    if (filter_var($sign, FILTER_VALIDATE_URL)) {
+        return $sign;
+    }
+
+    if (preg_match('/^data:image\/(png|jpe?g|gif|webp);base64,/i', $sign)) {
+        return $sign;
+    }
+
+    $encoded = preg_replace('/\s+/', '', $sign);
+    $imageBytes = base64_decode($encoded, true);
+    $imageInfo = $imageBytes !== false ? @getimagesizefromstring($imageBytes) : false;
+    $allowedMimes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+
+    if ($imageInfo && in_array($imageInfo['mime'] ?? '', $allowedMimes, true)) {
+        return 'data:' . $imageInfo['mime'] . ';base64,' . $encoded;
+    }
+
+    return null;
+}
 private function appendSignatureSummaryPage(Fpdi $pdf, SettingDocument $document, string $token, ?string $recipientEmail, string $signerName, $signedAt, array &$tempFiles, string $tempDir)
 {
     $signatureAbsolutePath = $document->signature_path
@@ -2886,7 +2978,16 @@ private function generateSignedPacket(array $sessionData, $documents, string $to
         foreach ($documents as $document) {
             $hasSignatureFields = $this->documentHasSignatureFields($document);
             $shouldAppendSignature = $document->signature_required && $document->signature_path && !$hasSignatureFields;
-            $this->appendDocumentToSignedPacket($pdf, $document, $tempFiles, $tempDir, $shouldAppendSignature, $fieldContext);
+            $sourceFilePath = null;
+            $currentEstimatePdf = $this->buildCurrentEstimatePdfForDocument($document);
+
+            if ($currentEstimatePdf !== null) {
+                $sourceFilePath = $tempDir . '/' . uniqid('estimate_current_') . '.pdf';
+                file_put_contents($sourceFilePath, $currentEstimatePdf);
+                $tempFiles[] = $sourceFilePath;
+            }
+
+            $this->appendDocumentToSignedPacket($pdf, $document, $tempFiles, $tempDir, $shouldAppendSignature, $fieldContext, $sourceFilePath);
 
             if ($shouldAppendSignature) {
                 $this->appendSignatureSummaryPage($pdf, $document, $token, $recipientEmail, $signerName, $signedAt, $tempFiles, $tempDir);
@@ -3327,9 +3428,9 @@ public function showSignDocument($token)
 {
     $data = $this->getSigningSession($token);
 
-    // if (!$data || !isset($data['document_ids'])) {
-    //     return view('document.expired');
-    // }
+    if (!$data || !isset($data['document_ids'])) {
+        return view('document.expired');
+    }
 
     // link expired or invalid
 
@@ -3345,7 +3446,6 @@ public function showSignDocument($token)
     $documents = $this->resolveSigningDocuments($data);
     $documents = $this->hydrateSigningDocumentsWithResolvedFieldValues($documents, $data);
     $signingUser = User::find($data['user_id'] ?? null);
-    $userSignaturePath = $this->resolveUserSignatureRelativePath($signingUser);
 
     if ($documents->isEmpty()) {
         return view('document.expired');
@@ -3395,7 +3495,7 @@ public function showSignDocument($token)
         'recipientEmail' => $data['email'] ?? null,
         'requiredDocumentIds' => $requiredDocumentIds,
         'requiredSignatureTargets' => $requiredSignatureTargets,
-        'prefilledUserSignatureUrl' => $userSignaturePath ? asset('storage/' . $userSignaturePath) : (filter_var((string) optional($signingUser)->sign, FILTER_VALIDATE_URL) ? optional($signingUser)->sign : null),
+        'prefilledUserSignatureUrl' => $this->resolveUserSignatureRenderableUrl($signingUser),
         'prefilledUserSignatureText' => $this->resolveUserSignatureDisplayText($signingUser),
     ]);
 }
@@ -3416,6 +3516,18 @@ public function viewSigningSourceDocument($token, SettingDocument $document)
 public function previewSigningDocument($token, SettingDocument $document)
 {
     $matchedDocument = $this->resolveSigningSessionDocument($token, $document);
+    $currentEstimatePdf = $this->buildCurrentEstimatePdfForDocument($matchedDocument);
+
+    if ($currentEstimatePdf !== null) {
+        return response($currentEstimatePdf, 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="estimate_' . $matchedDocument->id . '.pdf"',
+            'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
+            'Pragma' => 'no-cache',
+            'Expires' => '0',
+        ]);
+    }
+
     $absolutePath = $this->resolveDocumentAbsolutePath($matchedDocument);
 
     if (!$absolutePath) {
@@ -3442,6 +3554,25 @@ public function previewSigningDocument($token, SettingDocument $document)
     abort(404);
 }
 
+private function buildCurrentEstimatePdfForDocument(SettingDocument $document): ?string
+{
+    $estimateId = $document->estimate_id ?: $this->resolveEstimateIdFromDocumentPath($document);
+
+    if ($document->document_type !== 'estimate' || !$estimateId) {
+        return null;
+    }
+
+    $estimate = Estimate::where('id', $estimateId)
+        ->where('company_id', $document->company_id)
+        ->first();
+    $user = User::with('company')->find($document->user_id);
+
+    if (!$estimate || !$user) {
+        return null;
+    }
+
+    return $this->buildEstimatePreviewPdf($estimate, $user, app(EstimateService::class));
+}
 public function servePublicStorageFile($path)
 {
     $relativePath = ltrim((string) $path, '/');
@@ -3984,7 +4115,7 @@ private function formatSigningSenderName(?User $user): ?string
         return null;
     }
 
-    $name = trim((string) ($user->name ?: trim(($user->first_name ?: '') . ' ' . ($user->last_name ?: ''))));
+    $name = trim((string) (($user->first_name ?: '') . ' ' . ($user->last_name ?: '')));
 
     return $name !== '' ? $name : $user->email;
 }

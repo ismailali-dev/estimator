@@ -14,10 +14,10 @@
             background: #fff;
         }
         .estimate-page {
-            width: 100%;
+            width: auto;
             min-height: 980px;
             margin: 0 auto;
-            padding: 18px 24px 24px;
+            padding: 18px 32px 24px;
             box-sizing: border-box;
             position: relative;
             background: #fff;
@@ -169,6 +169,8 @@
         .spec-unit {
             width: 10%;
             text-align: center;
+            padding-right: 12px;
+            box-sizing: border-box;
         }
         .total-row {
             margin-top: 36px;
