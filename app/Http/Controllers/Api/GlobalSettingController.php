@@ -3893,13 +3893,18 @@ public function submitSignature(Request $request, $token)
             }
 
             foreach ($this->normalizeDocumentFields($document->fields ?? []) as $field) {
-                if (($field['type'] ?? null) !== 'signature' || $this->isUserSignatureField($field)) {
+                if (($field['type'] ?? null) !== 'signature') {
                     continue;
                 }
 
                 $fieldSignature = data_get($fieldSignatures, $document->id . '.' . $field['id'])
-                    ?: data_get($fieldSignatures, $document->id . '.' . $field['key'])
-                    ?: $signature;
+                    ?: data_get($fieldSignatures, $document->id . '.' . $field['key']);
+
+                // The contractor field may use the saved profile signature without
+                // submitting a new image. Customer fields retain the document fallback.
+                if (!$this->isUserSignatureField($field)) {
+                    $fieldSignature = $fieldSignature ?: $signature;
+                }
 
                 if (!is_string($fieldSignature) || trim($fieldSignature) === '') {
                     continue;

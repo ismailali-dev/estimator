@@ -453,10 +453,38 @@
         }
 
         .submit-bar {
-            margin-top: 3rem;
+            width: 100%;
+            margin-top: 1rem;
             display: flex;
-            justify-content: flex-end;
+            justify-content: center;
             align-items: center;
+        }
+
+        @media (min-width: 701px) {
+            .submit-bar {
+                margin-top: 1rem;
+                margin-bottom: 1.25rem;
+            }
+
+            #submit-all {
+                min-width: 190px;
+                padding: 0.95rem 3rem;
+                font-size: 1.25rem;
+                font-weight: 700;
+                letter-spacing: 0.01em;
+                box-shadow: 0 12px 24px -10px rgba(31, 30, 27, 0.55);
+                transform: translateY(0);
+            }
+
+            #submit-all:hover:not(:disabled) {
+                transform: translateY(-2px);
+                box-shadow: 0 16px 28px -10px rgba(31, 30, 27, 0.62);
+            }
+
+            #submit-all:active:not(:disabled) {
+                transform: translateY(0);
+                box-shadow: 0 8px 16px -9px rgba(31, 30, 27, 0.5);
+            }
         }
 
         .button {
@@ -859,6 +887,28 @@
             }
             .dropdown-group {
                 justify-content: space-between;
+            }
+            .field-overlay .signed-badge {
+                width: 100%;
+                height: 100%;
+                border-width: 1px;
+                border-radius: 0.2rem;
+                transform: none;
+            }
+            .field-overlay .signed-badge-label {
+                top: 2px;
+                left: 4px;
+                padding: 0;
+                font-size: clamp(4px, 1.2vw, 7px);
+                line-height: 1;
+            }
+            .field-overlay .signed-badge img {
+                width: calc(100% - 2.75rem);
+                height: 72%;
+                margin-left: 2.5rem;
+                margin-right: 0.25rem;
+                transform: none;
+                object-fit: contain;
             }
             .field-overlay.is-editable {
                 border-width: 1px;
