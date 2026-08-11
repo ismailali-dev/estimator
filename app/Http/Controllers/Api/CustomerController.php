@@ -94,9 +94,9 @@ class CustomerController extends ApiBaseController
             'email' => [
                 'required',
                 'email',
-                Rule::unique("customers")->where(function($query) use($request){
-                    return $query->where("user_id", $request->user()->id)->where("email", $request->input("email"))->where("id", "!=", $request->id);
-                })
+                // Rule::unique("customers")->where(function($query) use($request){
+                //     return $query->where("user_id", $request->user()->id)->where("email", $request->input("email"))->where("id", "!=", $request->id);
+                // })
             ],
             'address' => 'required|string',
             'city' => 'required|string',
