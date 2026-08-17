@@ -33,4 +33,10 @@ return [
         'webhook_secret' => env('REVENUECAT_WEBHOOK_SECRET'),
     ],
 
+    'ezsubcontractor' => [
+        'publish_url' => env('EZSUBCONTRACTOR_PUBLISH_URL'),
+        'token' => env('EZSUBCONTRACTOR_API_TOKEN'),
+        'timeout' => env('EZSUBCONTRACTOR_TIMEOUT', 20),
+    ],
+
 ];

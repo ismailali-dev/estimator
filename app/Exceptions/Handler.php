@@ -5,6 +5,7 @@ namespace App\Exceptions;
 use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
 use Throwable;
 use Illuminate\Auth\AuthenticationException;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 
 class Handler extends ExceptionHandler
 {
@@ -36,6 +37,16 @@ class Handler extends ExceptionHandler
     {
         $this->reportable(function (Throwable $e) {
             //
+        });
+
+        $this->renderable(function (ModelNotFoundException $exception, $request) {
+            if ($request->is('api/*')) {
+                return response()->json([
+                    'data' => [],
+                    'message' => 'Resource not found.',
+                    'status' => false,
+                ], 404);
+            }
         });
     }
 
