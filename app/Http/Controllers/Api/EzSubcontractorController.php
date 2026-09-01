@@ -12,6 +12,75 @@ use Illuminate\Support\Facades\Validator;
 
 class EzSubcontractorController extends ResponseController
 {
+    public function sync(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'latitude' => 'nullable|numeric|between:-90,90',
+            'longitude' => 'nullable|numeric|between:-180,180',
+        ]);
+        if ($validator->fails()) {
+            $this->response_data['message'] = $validator->errors()->first();
+            return $this->sendJsonResponse(self::HTTP_BAD_REQUEST);
+        }
+
+        $url = config('services.ezsubcontractor.sync_url');
+        if (!$url) {
+            $this->response_data['message'] = 'EZsubcontractor sync API is not configured.';
+            return $this->sendJsonResponse(self::HTTP_INTERNAL_SERVER_ERROR);
+        }
+
+        $defaultPassword = (string) config('services.ezsubcontractor.default_password');
+        if (strlen($defaultPassword) < 8) {
+            $this->response_data['message'] = 'EZsubcontractor default password is not configured.';
+            return $this->sendJsonResponse(self::HTTP_INTERNAL_SERVER_ERROR);
+        }
+
+        $user = $request->user()->load('company');
+        $http = Http::acceptJson()->asJson()
+            ->timeout((int) config('services.ezsubcontractor.timeout', 20));
+        if ($token = config('services.ezsubcontractor.token')) {
+            $http = $http->withToken($token);
+        }
+
+        try {
+            $response = $http->post($url, [
+                'source_user_id' => (int) $user->id,
+                'source_company_id' => (int) $user->company_id,
+                'email' => $user->email,
+                'name' => trim((string) $user->first_name . ' ' . (string) $user->last_name),
+                'company_name' => optional($user->company)->name,
+                'phone' => $user->phone,
+                'latitude' => $request->input('latitude'),
+                'longitude' => $request->input('longitude'),
+                'password' => $defaultPassword,
+                'password_confirmation' => $defaultPassword,
+            ]);
+        } catch (\Throwable $exception) {
+            report($exception);
+            $this->response_data['message'] = 'EZsubcontractor could not be reached. Please try again.';
+            return $this->sendJsonResponse(self::HTTP_INTERNAL_SERVER_ERROR);
+        }
+
+        if (!$response->successful()) {
+            $this->response_data['message'] = data_get($response->json(), 'message', 'EZsubcontractor rejected the sync request.');
+            $this->response_data['data'] = $response->json() ?: null;
+            return $this->sendJsonResponse($response->status() >= 500 ? 502 : $response->status());
+        }
+
+        $this->response_data['status'] = true;
+        $this->response_data['message'] = 'EZsubcontractor account synced.';
+        $remoteData = (array) data_get($response->json(), 'data', []);
+        $this->response_data['data'] = [
+            'exists' => true,
+            'account_exists' => true,
+            'is_linked_to_ezestimator' => true,
+            'account_created' => (bool) data_get($remoteData, 'account_created', false),
+            'subscription_created' => (bool) data_get($remoteData, 'subscription_created', false),
+            'subscription' => data_get($remoteData, 'subscription'),
+        ];
+        return $this->sendJsonResponse();
+    }
+
     public function desync(Request $request): JsonResponse
     {
         $url = config('services.ezsubcontractor.desync_url');
