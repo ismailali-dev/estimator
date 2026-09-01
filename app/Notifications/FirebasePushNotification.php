@@ -22,7 +22,13 @@ class FirebasePushNotification extends Notification implements ShouldQueue
 
     public function via($notifiable)
     {
-        return [FirebaseChannel::class, 'database'];
+        $channels = ['database'];
+
+        if ($notifiable->devices()->whereNotNull('device_token')->where('device_token', '!=', '')->exists()) {
+            $channels[] = FirebaseChannel::class;
+        }
+
+        return $channels;
     }
 
     public function toFirebase($notifiable)

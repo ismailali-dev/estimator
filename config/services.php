@@ -35,6 +35,9 @@ return [
 
     'ezsubcontractor' => [
         'publish_url' => env('EZSUBCONTRACTOR_PUBLISH_URL'),
+        'signup_url' => env('EZSUBCONTRACTOR_SIGNUP_URL'),
+        'status_url' => env('EZSUBCONTRACTOR_STATUS_URL'),
+        'desync_url' => env('EZSUBCONTRACTOR_DESYNC_URL'),
         'token' => env('EZSUBCONTRACTOR_API_TOKEN'),
         'timeout' => env('EZSUBCONTRACTOR_TIMEOUT', 20),
     ],
