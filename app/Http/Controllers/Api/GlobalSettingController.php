@@ -3325,7 +3325,12 @@ public function sendDocumentsByEmail(Request $request)
         $signingLink = url('/document/sign/' . $token);
 
         $failureStage = 'send_email';
-        Mail::to($request->email)->send(new SettingDocumentsMail($documents, $signingLink, $description));
+        Mail::to($request->email)->send(new SettingDocumentsMail(
+            $documents,
+            $signingLink,
+            $description,
+            $request->email
+        ));
 
         return response()->json([
             'status'  => true,
