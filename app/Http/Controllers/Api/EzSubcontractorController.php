@@ -29,12 +29,6 @@ class EzSubcontractorController extends ResponseController
             return $this->sendJsonResponse(self::HTTP_INTERNAL_SERVER_ERROR);
         }
 
-        $defaultPassword = (string) config('services.ezsubcontractor.default_password');
-        if (strlen($defaultPassword) < 8) {
-            $this->response_data['message'] = 'EZsubcontractor default password is not configured.';
-            return $this->sendJsonResponse(self::HTTP_INTERNAL_SERVER_ERROR);
-        }
-
         $user = $request->user()->load('company');
         $http = Http::acceptJson()->asJson()
             ->timeout((int) config('services.ezsubcontractor.timeout', 20));
@@ -52,8 +46,6 @@ class EzSubcontractorController extends ResponseController
                 'phone' => $user->phone,
                 'latitude' => $request->input('latitude'),
                 'longitude' => $request->input('longitude'),
-                'password' => $defaultPassword,
-                'password_confirmation' => $defaultPassword,
             ]);
         } catch (\Throwable $exception) {
             report($exception);
@@ -75,6 +67,7 @@ class EzSubcontractorController extends ResponseController
             'account_exists' => true,
             'is_linked_to_ezestimator' => true,
             'account_created' => (bool) data_get($remoteData, 'account_created', false),
+            'credentials_email_sent' => (bool) data_get($remoteData, 'credentials_email_sent', false),
             'subscription_created' => (bool) data_get($remoteData, 'subscription_created', false),
             'subscription' => data_get($remoteData, 'subscription'),
         ];
