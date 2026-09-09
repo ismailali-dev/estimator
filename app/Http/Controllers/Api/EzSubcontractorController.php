@@ -15,6 +15,7 @@ class EzSubcontractorController extends ResponseController
     public function sync(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
+            'email' => 'sometimes|required|email|max:255',
             'latitude' => 'nullable|numeric|between:-90,90',
             'longitude' => 'nullable|numeric|between:-180,180',
         ]);
@@ -40,7 +41,7 @@ class EzSubcontractorController extends ResponseController
             $response = $http->post($url, [
                 'source_user_id' => (int) $user->id,
                 'source_company_id' => (int) $user->company_id,
-                'email' => $user->email,
+                'email' => $request->input('email', $user->email),
                 'name' => trim((string) $user->first_name . ' ' . (string) $user->last_name),
                 'company_name' => optional($user->company)->name,
                 'phone' => $user->phone,
