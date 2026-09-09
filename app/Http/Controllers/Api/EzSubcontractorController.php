@@ -199,9 +199,83 @@ class EzSubcontractorController extends ResponseController
         return $this->sendJsonResponse(self::HTTP_ACCEPTED);
     }
 
+    public function checkEmail(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'email' => 'required|email|max:255',
+        ]);
+        if ($validator->fails()) {
+            $this->response_data['message'] = $validator->errors()->first();
+            return $this->sendJsonResponse(self::HTTP_BAD_REQUEST);
+        }
+
+        $url = config('services.ezsubcontractor.check_email_url');
+        if (!$url) {
+            $this->response_data['message'] = 'EZsubcontractor email check API is not configured.';
+            return $this->sendJsonResponse(self::HTTP_INTERNAL_SERVER_ERROR);
+        }
+
+        $email = $request->input('email');
+        $http = Http::acceptJson()->asJson()
+            ->timeout((int) config('services.ezsubcontractor.timeout', 20));
+        if ($token = config('services.ezsubcontractor.token')) {
+            $http = $http->withToken($token);
+        }
+
+        try {
+            $response = $http->post($url, ['email' => $email]);
+        } catch (\Throwable $exception) {
+            report($exception);
+            $this->response_data['message'] = 'EZsubcontractor could not be reached. Please try again.';
+            return $this->sendJsonResponse(self::HTTP_INTERNAL_SERVER_ERROR);
+        }
+
+        if (!$response->successful()) {
+            $this->response_data['message'] = data_get($response->json(), 'message', 'EZsubcontractor rejected the email check request.');
+            return $this->sendJsonResponse($response->status() >= 500 ? 502 : $response->status());
+        }
+
+        $remoteData = (array) data_get($response->json(), 'data', []);
+        $exists = (bool) data_get($remoteData, 'exists', false);
+        $accountType = strtolower(trim((string) data_get($remoteData, 'account_type', '')));
+
+        if ($exists && in_array($accountType, ['subcontractor', 'affiliate'], true)) {
+            $this->response_data['message'] = 'This email already exists as a subcontractor or Affiliate.';
+            $this->response_data['data'] = [
+                'exists' => true,
+                'account_type' => $accountType,
+                'can_sync' => false,
+            ];
+            return $this->sendJsonResponse(409);
+        }
+
+        if ($exists && $accountType === 'general_contractor') {
+            $this->response_data['status'] = true;
+            $this->response_data['message'] = 'This email already exists as a General Contractor on EZsubcontractor. You can log in with your existing password or set a new one.';
+            $this->response_data['data'] = [
+                'exists' => true,
+                'account_type' => 'general_contractor',
+                'can_sync' => true,
+                'can_login_with_existing_password' => true,
+                'can_set_new_password' => true,
+            ];
+            return $this->sendJsonResponse();
+        }
+
+        $this->response_data['status'] = true;
+        $this->response_data['message'] = 'Email is available to sync with EZsubcontractor.';
+        $this->response_data['data'] = [
+            'exists' => false,
+            'account_type' => null,
+            'can_sync' => true,
+        ];
+        return $this->sendJsonResponse();
+    }
+
     public function signup(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
+            'email' => 'sometimes|required|email|max:255',
             'latitude' => 'nullable|numeric|between:-90,90',
             'longitude' => 'nullable|numeric|between:-180,180',
             'password' => 'required|string|min:8|confirmed',
@@ -223,7 +297,7 @@ class EzSubcontractorController extends ResponseController
             'contractor' => [
                 'source_user_id' => (int) $user->id,
                 'source_company_id' => (int) $user->company_id,
-                'email' => $user->email,
+                'email' => $request->input('email', $user->email),
                 'name' => trim((string) $user->first_name . ' ' . (string) $user->last_name),
                 'company_name' => optional($user->company)->name,
                 'phone' => $user->phone,
