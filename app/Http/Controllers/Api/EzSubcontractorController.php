@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Estimate;
 use App\Models\User;
+use App\Models\UserInvoiceSetting;
 use App\Notifications\FirebasePushNotification;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -45,6 +46,7 @@ class EzSubcontractorController extends ResponseController
                 'name' => trim((string) $user->first_name . ' ' . (string) $user->last_name),
                 'company_name' => optional($user->company)->name,
                 'phone' => $user->phone,
+                'profile_image' => $this->profileImageUrl($user),
                 'latitude' => $request->input('latitude'),
                 'longitude' => $request->input('longitude'),
             ]);
@@ -302,6 +304,7 @@ class EzSubcontractorController extends ResponseController
                 'name' => trim((string) $user->first_name . ' ' . (string) $user->last_name),
                 'company_name' => optional($user->company)->name,
                 'phone' => $user->phone,
+                'profile_image' => $this->profileImageUrl($user),
             ],
             'latitude' => $request->input('latitude'),
             'longitude' => $request->input('longitude'),
@@ -412,12 +415,19 @@ class EzSubcontractorController extends ResponseController
         }
 
         if (!$response->successful()) {
-            $this->response_data['message'] = 'EZsubcontractor rejected the job.';
+            $remoteMessage = $response->json('message');
+            if (is_array($remoteMessage)) {
+                $remoteMessage = collect($remoteMessage)->flatten()->first();
+            }
+            $this->response_data['message'] = $response->status() < 500
+                && is_string($remoteMessage) && $remoteMessage !== ''
+                ? $remoteMessage
+                : 'EZsubcontractor rejected the job.';
             $this->response_data['data'] = [
                 'remote_status' => $response->status(),
                 'remote_response' => $response->json() ?: $response->body(),
             ];
-            return $this->sendJsonResponse($response->status() >= 500 ? 502 : self::HTTP_BAD_REQUEST);
+            return $this->sendJsonResponse($response->status() >= 400 && $response->status() < 500 ? $response->status() : 502);
         }
 
         $this->response_data['status'] = true;
@@ -495,6 +505,7 @@ class EzSubcontractorController extends ResponseController
                 'name' => trim((string) optional($estimate->user)->first_name . ' ' . (string) optional($estimate->user)->last_name),
                 'company_name' => optional(optional($estimate->user)->company)->name,
                 'phone' => optional($estimate->user)->phone,
+                'profile_image' => $this->profileImageUrl($estimate->user),
             ],
             'customer' => [
                 'name' => $customer ? ($customer->full_name ?: $customer->name) : null,
@@ -504,6 +515,34 @@ class EzSubcontractorController extends ResponseController
             ],
             'trades' => $trades,
         ];
+    }
+
+    private function profileImageUrl(?User $user): ?string
+    {
+        // Do not sync Voyager's default avatar as a real profile photo.
+        $avatar = trim((string) ($user ? $user->getRawOriginal('avatar') : ''));
+        if ($avatar === '' || $avatar === config('voyager.user.default_avatar', 'users/default.png')) {
+            if (!$user) {
+                return null;
+            }
+
+            // The app's uploaded account image is the invoice/company logo.
+            // Use the same owner selection as the login response for team members.
+            $ownerId = $user->is_admin ? $user->id : ($user->parent_id ?: $user->id);
+            $setting = UserInvoiceSetting::where('user_id', $ownerId)->first();
+            $logo = trim((string) optional($setting)->logo);
+            if (preg_match('~^https?://~i', $logo)) {
+                return $logo;
+            }
+
+            return $setting ? ($setting->full_logo ?: null) : null;
+        }
+
+        if (preg_match('~^https?://~i', $avatar)) {
+            return $avatar;
+        }
+
+        return url(\TCG\Voyager\Facades\Voyager::image($avatar));
     }
 
     private function notFoundResponse(): JsonResponse
