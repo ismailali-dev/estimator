@@ -3,12 +3,14 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\Estimate;
+use App\Models\SettingDocument;
 use App\Models\User;
 use App\Models\UserInvoiceSetting;
 use App\Notifications\FirebasePushNotification;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 
 class EzSubcontractorController extends ResponseController
@@ -348,6 +350,12 @@ class EzSubcontractorController extends ResponseController
 
         $this->response_data['status'] = true;
         $this->response_data['data'] = $this->buildPayload($estimate);
+        $this->response_data['data']['attachments'] = $this->estimateAttachments($estimate)->map(fn ($document) => [
+            'id' => (int) $document->id,
+            'file_url' => Storage::disk('public')->url($document->file_path),
+            'file_type' => $document->file_type,
+            'description' => $document->document_name,
+        ])->values()->all();
         return $this->sendJsonResponse();
     }
 
@@ -361,7 +369,10 @@ class EzSubcontractorController extends ResponseController
         $validator = Validator::make($request->all(), [
             'trade_ids' => 'required_without:estimate_sheet_id|prohibits:estimate_sheet_id|array|min:1',
             'trade_ids.*' => 'required|integer|distinct',
-            'estimate_sheet_id' => 'required_without:trade_ids|integer|min:1',
+            'estimate_sheet_id' => is_array($request->input('estimate_sheet_id'))
+                ? 'required_without:trade_ids|array|min:1'
+                : 'required_without:trade_ids|integer|min:1',
+            'estimate_sheet_id.*' => 'required|integer|min:1|distinct',
             'latitude' => 'required|numeric|between:-90,90',
             'longitude' => 'required|numeric|between:-180,180',
             'estimate_due_date' => 'required|date',
@@ -369,32 +380,41 @@ class EzSubcontractorController extends ResponseController
             'end_date' => 'required|date|after_or_equal:start_date',
             'contact_options' => 'nullable|array|min:1',
             'contact_options.*' => 'required|in:chat,email,phone|distinct',
+            'attachments' => 'nullable|array|max:10',
+            'attachments.*' => 'required|array',
+            'attachments.*.file' => 'required|file|mimes:pdf,jpg,jpeg,png,webp,doc,docx,xls,xlsx,txt,csv,zip|max:10240',
+            'attachments.*.description' => 'nullable|string|max:1000',
         ]);
         if ($validator->fails()) {
             $this->response_data['message'] = $validator->errors()->first();
             return $this->sendJsonResponse(self::HTTP_BAD_REQUEST);
         }
 
-        $sheetId = $request->filled('estimate_sheet_id') ? (int) $request->input('estimate_sheet_id') : null;
+        $sheetIds = $request->filled('estimate_sheet_id')
+            ? collect((array) $request->input('estimate_sheet_id'))->map(fn ($id) => (int) $id)->values()
+            : null;
+        $sheetId = $sheetIds !== null && !is_array($request->input('estimate_sheet_id')) ? $sheetIds->first() : null;
         $requestedIds = collect($request->input('trade_ids', []))->map(fn ($id) => (int) $id)->unique();
         $payload = $this->buildPayload(
             $estimate,
-            $sheetId === null ? $requestedIds->all() : null,
+            $sheetIds === null ? $requestedIds->all() : null,
             (float) $request->input('latitude'),
             (float) $request->input('longitude'),
             (string) $request->input('estimate_due_date'),
             (string) $request->input('start_date'),
             (string) $request->input('end_date'),
             $request->input('contact_options', ['chat', 'email', 'phone']),
-            $sheetId
+            $sheetIds === null ? null : $sheetIds->all()
         );
-        if ($sheetId !== null && empty($payload['trades'])) {
-            $this->response_data['message'] = 'The selected specification does not belong to this estimate or is not eligible for publishing.';
-            $this->response_data['data'] = ['invalid_estimate_sheet_id' => $sheetId];
-            return $this->sendJsonResponse(self::HTTP_BAD_REQUEST);
-        }
-        if ($sheetId !== null) {
-            $payload['estimate_sheet_id'] = $sheetId;
+        if ($sheetIds !== null) {
+            $foundSheetIds = collect($payload['trades'])->flatMap(fn ($trade) => $trade['specifications'])->pluck('estimate_sheet_id');
+            $missingSheetIds = $sheetIds->diff($foundSheetIds)->values();
+            if ($missingSheetIds->isNotEmpty()) {
+                $this->response_data['message'] = 'One or more selected specifications do not belong to this estimate or are not eligible for publishing.';
+                $this->response_data['data'] = ['invalid_estimate_sheet_ids' => $missingSheetIds];
+                return $this->sendJsonResponse(self::HTTP_BAD_REQUEST);
+            }
+            $payload['estimate_sheet_id'] = $sheetId ?? $sheetIds->all();
         }
         $foundIds = collect($payload['trades'])->pluck('id');
         $missingIds = $requestedIds->diff($foundIds)->values();
@@ -410,14 +430,64 @@ class EzSubcontractorController extends ResponseController
             return $this->sendJsonResponse(self::HTTP_INTERNAL_SERVER_ERROR);
         }
 
-        $http = Http::acceptJson()->asJson()
+        $http = Http::acceptJson()
             ->timeout((int) config('services.ezsubcontractor.timeout', 20))
-            ->withHeaders(['Idempotency-Key' => hash('sha256', $estimate->id . '|' . ($sheetId === null ? $requestedIds->sort()->implode(',') : 'specification|' . $sheetId))]);
+            ->withHeaders(['Idempotency-Key' => hash('sha256', $estimate->id . '|' . ($sheetIds === null ? $requestedIds->sort()->implode(',') : 'specification|' . $sheetIds->sort()->implode(',')))]);
         if ($token = config('services.ezsubcontractor.token')) {
             $http = $http->withToken($token);
         }
 
         try {
+            $documents = $this->estimateAttachments($estimate);
+            $uploads = $request->file('attachments', []);
+            if ($documents->count() + count($uploads) > 10) {
+                $this->response_data['message'] = 'A maximum of 10 attachments can be published, including existing estimate attachments.';
+                return $this->sendJsonResponse(self::HTTP_BAD_REQUEST);
+            }
+            foreach ($documents as $document) {
+                if (!Storage::disk('public')->exists($document->file_path)) {
+                    $this->response_data['message'] = 'An estimate attachment is missing. Please upload it again before publishing.';
+                    return $this->sendJsonResponse(self::HTTP_BAD_REQUEST);
+                }
+                if (Storage::disk('public')->size($document->file_path) > 10240 * 1024) {
+                    $this->response_data['message'] = 'Estimate attachments must be 10 MB or smaller to publish.';
+                    return $this->sendJsonResponse(self::HTTP_BAD_REQUEST);
+                }
+            }
+            if ($documents->isNotEmpty() || $uploads) {
+                $http = $http->asMultipart();
+                $parts = [];
+                foreach (\Illuminate\Support\Arr::dot($payload) as $key => $value) {
+                    if ($value === null || is_array($value)) {
+                        continue;
+                    }
+                    $segments = explode('.', $key);
+                    $name = array_shift($segments);
+                    foreach ($segments as $segment) {
+                        $name .= '[' . $segment . ']';
+                    }
+                    $parts[] = ['name' => $name, 'contents' => (string) $value];
+                }
+                $attachmentIndex = 0;
+                foreach ($uploads as $index => $attachment) {
+                    $file = $attachment['file'];
+                    $http->attach('attachments[' . $attachmentIndex . '][file]', file_get_contents($file->getRealPath()), $file->getClientOriginalName());
+                    $parts[] = [
+                        'name' => 'attachments[' . $attachmentIndex . '][description]',
+                        'contents' => (string) $request->input('attachments.' . $index . '.description', ''),
+                    ];
+                    $attachmentIndex++;
+                }
+                foreach ($documents as $document) {
+                    $http->attach('attachments[' . $attachmentIndex . '][file]', Storage::disk('public')->get($document->file_path), basename($document->file_path));
+                    $parts[] = [
+                        'name' => 'attachments[' . $attachmentIndex . '][description]',
+                        'contents' => (string) $document->document_name,
+                    ];
+                    $attachmentIndex++;
+                }
+                $payload = $parts;
+            }
             $response = $http->post($url, $payload);
         } catch (\Throwable $exception) {
             report($exception);
@@ -442,14 +512,23 @@ class EzSubcontractorController extends ResponseController
         }
 
         $this->response_data['status'] = true;
-        $this->response_data['message'] = $sheetId === null ? 'Selected trades posted to EZsubcontractor successfully.' : 'Selected specification posted to EZsubcontractor successfully.';
+        $this->response_data['message'] = $sheetIds === null ? 'Selected trades posted to EZsubcontractor successfully.' : 'Selected specifications posted to EZsubcontractor successfully.';
         $this->response_data['data'] = [
             'estimate_id' => $estimate->id,
             'posted_trade_ids' => $foundIds->values(),
             'posted_estimate_sheet_id' => $sheetId,
+            'posted_estimate_sheet_ids' => $sheetIds ?? collect(),
             'ezsubcontractor' => $response->json(),
         ];
         return $this->sendJsonResponse();
+    }
+
+    private function estimateAttachments(Estimate $estimate)
+    {
+        return SettingDocument::where('estimate_id', $estimate->id)
+            ->where('company_id', $estimate->company_id)
+            ->whereIn('document_type', ['estimate_upload', 'sub_estimate_upload'])
+            ->orderBy('sort_order')->orderBy('id')->get();
     }
 
     private function ownedEstimate(Request $request, $estimateId): ?Estimate
@@ -469,14 +548,14 @@ class EzSubcontractorController extends ResponseController
         ?string $startDate = null,
         ?string $endDate = null,
         ?array $contactOptions = null,
-        ?int $estimateSheetId = null
+        ?array $estimateSheetIds = null
     ): array
     {
         $selectedIds = $tradeIds === null ? null : collect($tradeIds)->map(fn ($id) => (int) $id)->unique();
-        $sheets = $estimate->sheet->filter(function ($sheet) use ($selectedIds, $estimateSheetId) {
+        $sheets = $estimate->sheet->filter(function ($sheet) use ($selectedIds, $estimateSheetIds) {
             $tradeId = optional(optional($sheet->code)->ProductGroup)->id;
             return $sheet->quantity > 0 && $tradeId
-                && ($estimateSheetId === null || (int) $sheet->id === $estimateSheetId)
+                && ($estimateSheetIds === null || in_array((int) $sheet->id, $estimateSheetIds, true))
                 && ($selectedIds === null || $selectedIds->contains((int) $tradeId));
         });
 
