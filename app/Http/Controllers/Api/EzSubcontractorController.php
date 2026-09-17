@@ -359,8 +359,9 @@ class EzSubcontractorController extends ResponseController
         }
 
         $validator = Validator::make($request->all(), [
-            'trade_ids' => 'required|array|min:1',
+            'trade_ids' => 'required_without:estimate_sheet_id|prohibits:estimate_sheet_id|array|min:1',
             'trade_ids.*' => 'required|integer|distinct',
+            'estimate_sheet_id' => 'required_without:trade_ids|integer|min:1',
             'latitude' => 'required|numeric|between:-90,90',
             'longitude' => 'required|numeric|between:-180,180',
             'estimate_due_date' => 'required|date',
@@ -374,17 +375,27 @@ class EzSubcontractorController extends ResponseController
             return $this->sendJsonResponse(self::HTTP_BAD_REQUEST);
         }
 
-        $requestedIds = collect($request->input('trade_ids'))->map(fn ($id) => (int) $id)->unique();
+        $sheetId = $request->filled('estimate_sheet_id') ? (int) $request->input('estimate_sheet_id') : null;
+        $requestedIds = collect($request->input('trade_ids', []))->map(fn ($id) => (int) $id)->unique();
         $payload = $this->buildPayload(
             $estimate,
-            $requestedIds->all(),
+            $sheetId === null ? $requestedIds->all() : null,
             (float) $request->input('latitude'),
             (float) $request->input('longitude'),
             (string) $request->input('estimate_due_date'),
             (string) $request->input('start_date'),
             (string) $request->input('end_date'),
-            $request->input('contact_options', ['chat', 'email', 'phone'])
+            $request->input('contact_options', ['chat', 'email', 'phone']),
+            $sheetId
         );
+        if ($sheetId !== null && empty($payload['trades'])) {
+            $this->response_data['message'] = 'The selected specification does not belong to this estimate or is not eligible for publishing.';
+            $this->response_data['data'] = ['invalid_estimate_sheet_id' => $sheetId];
+            return $this->sendJsonResponse(self::HTTP_BAD_REQUEST);
+        }
+        if ($sheetId !== null) {
+            $payload['estimate_sheet_id'] = $sheetId;
+        }
         $foundIds = collect($payload['trades'])->pluck('id');
         $missingIds = $requestedIds->diff($foundIds)->values();
         if ($missingIds->isNotEmpty()) {
@@ -401,7 +412,7 @@ class EzSubcontractorController extends ResponseController
 
         $http = Http::acceptJson()->asJson()
             ->timeout((int) config('services.ezsubcontractor.timeout', 20))
-            ->withHeaders(['Idempotency-Key' => hash('sha256', $estimate->id . '|' . $requestedIds->sort()->implode(','))]);
+            ->withHeaders(['Idempotency-Key' => hash('sha256', $estimate->id . '|' . ($sheetId === null ? $requestedIds->sort()->implode(',') : 'specification|' . $sheetId))]);
         if ($token = config('services.ezsubcontractor.token')) {
             $http = $http->withToken($token);
         }
@@ -431,10 +442,11 @@ class EzSubcontractorController extends ResponseController
         }
 
         $this->response_data['status'] = true;
-        $this->response_data['message'] = 'Selected trades posted to EZsubcontractor successfully.';
+        $this->response_data['message'] = $sheetId === null ? 'Selected trades posted to EZsubcontractor successfully.' : 'Selected specification posted to EZsubcontractor successfully.';
         $this->response_data['data'] = [
             'estimate_id' => $estimate->id,
             'posted_trade_ids' => $foundIds->values(),
+            'posted_estimate_sheet_id' => $sheetId,
             'ezsubcontractor' => $response->json(),
         ];
         return $this->sendJsonResponse();
@@ -456,13 +468,15 @@ class EzSubcontractorController extends ResponseController
         ?string $estimateDueDate = null,
         ?string $startDate = null,
         ?string $endDate = null,
-        ?array $contactOptions = null
+        ?array $contactOptions = null,
+        ?int $estimateSheetId = null
     ): array
     {
         $selectedIds = $tradeIds === null ? null : collect($tradeIds)->map(fn ($id) => (int) $id)->unique();
-        $sheets = $estimate->sheet->filter(function ($sheet) use ($selectedIds) {
+        $sheets = $estimate->sheet->filter(function ($sheet) use ($selectedIds, $estimateSheetId) {
             $tradeId = optional(optional($sheet->code)->ProductGroup)->id;
             return $sheet->quantity > 0 && $tradeId
+                && ($estimateSheetId === null || (int) $sheet->id === $estimateSheetId)
                 && ($selectedIds === null || $selectedIds->contains((int) $tradeId));
         });
 
