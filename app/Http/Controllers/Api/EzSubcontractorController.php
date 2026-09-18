@@ -380,6 +380,8 @@ class EzSubcontractorController extends ResponseController
             'end_date' => 'required|date|after_or_equal:start_date',
             'contact_options' => 'nullable|array|min:1',
             'contact_options.*' => 'required|in:chat,email,phone|distinct',
+            'attachment_urls' => 'nullable|array|max:10',
+            'attachment_urls.*' => 'required|string|max:2048|distinct',
             'attachments' => 'nullable|array|max:10',
             'attachments.*' => 'required|array',
             'attachments.*.file' => 'required|file|mimes:pdf,jpg,jpeg,png,webp,doc,docx,xls,xlsx,txt,csv,zip|max:10240',
@@ -438,10 +440,17 @@ class EzSubcontractorController extends ResponseController
         }
 
         try {
-            $documents = $this->estimateAttachments($estimate);
+            $selectedUrls = collect($request->input('attachment_urls') ?? []);
+            $documents = $selectedUrls->isEmpty() ? collect() : $this->estimateAttachments($estimate)
+                ->filter(fn ($document) => $selectedUrls->containsStrict(Storage::disk('public')->url($document->file_path)));
+            $matchedUrls = $documents->map(fn ($document) => Storage::disk('public')->url($document->file_path));
+            if ($selectedUrls->diff($matchedUrls)->isNotEmpty()) {
+                $this->response_data['message'] = 'One or more selected attachment links do not belong to this estimate.';
+                return $this->sendJsonResponse(self::HTTP_BAD_REQUEST);
+            }
             $uploads = $request->file('attachments', []);
             if ($documents->count() + count($uploads) > 10) {
-                $this->response_data['message'] = 'A maximum of 10 attachments can be published, including existing estimate attachments.';
+                $this->response_data['message'] = 'A maximum of 10 attachments can be published, including selected estimate attachments.';
                 return $this->sendJsonResponse(self::HTTP_BAD_REQUEST);
             }
             foreach ($documents as $document) {
