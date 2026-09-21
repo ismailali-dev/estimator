@@ -568,7 +568,7 @@ public function verify_code(Request $request): JsonResponse
             $user->email_verified_at = now();
             $user->update();
 
-            $users = User::where("phone", $user->phone)
+            $users = $user->ezsubcontractor_user_id ? collect() : User::where("phone", $user->phone)
                 ->where("id", "!=", $user->id)
                 ->get();
 
