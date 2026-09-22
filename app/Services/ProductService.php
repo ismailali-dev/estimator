@@ -4,7 +4,9 @@ namespace App\Services;
 
 use App\Models\Product;
 use GuzzleHttp\Client;
-use PHPUnit\Exception;
+use Exception;
+use GuzzleHttp\Exception\TransferException;
+use RuntimeException;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Cache;
 
@@ -48,7 +50,7 @@ class ProductService
             $query['zip_code'] = $zip_code; // Add zip code as a search parameter
         }
 
-        // Send the request to the Home Depot API
+      
         $response = $client->request('GET', 'https://serpapi.com/search.json', [
             'query' => $query
         ]);
@@ -97,30 +99,44 @@ class ProductService
     
     
     function getHomeDepotProducts($keyword){
-        try{
-            $client = new Client();
-            $response = $client->request('GET', 'https://serpapi.com/search.json', [
-                'query' => [
-                    'engine' => 'home_depot',
-                    'q' => $keyword,
-                    'api_key' => 'a6217cf4987727e0374a30ab9efb70e1a4e9ba1e54a11c6ec6355a27e356ed0f',
-                ]
-            ]);
-
-            $statusCode = $response->getStatusCode();
-            $body = $response->getBody()->getContents();
-
-            // Handle the response as per your requirements
-            // For example, you can return the response body
-            return $body;
-        }catch (Exception $ex){
-            dump($ex->getMessage());
-            throw new $ex->getMessage();
+        for ($attempt = 1; $attempt <= 3; $attempt++) {
+            try {
+                $response = (new Client())->request('GET', 'https://serpapi.com/search.json', [
+                    'connect_timeout' => 10,
+                    'timeout' => 45,
+                    'http_errors' => false,
+                    'query' => [
+                        'engine' => 'home_depot',
+                        'q' => $keyword,
+                        'api_key' => 'a6217cf4987727e0374a30ab9efb70e1a4e9ba1e54a11c6ec6355a27e356ed0f',
+                    ],
+                ]);
+                $status = $response->getStatusCode();
+                if ($status >= 500 || $status === 429) {
+                    if ($attempt < 3) {
+                        usleep(250000 * $attempt);
+                        continue;
+                    }
+                    throw new RuntimeException('Home Depot search is temporarily unavailable. Please try again later.');
+                }
+                if ($status !== 200) {
+                    throw new RuntimeException('Home Depot search failed (HTTP ' . $status . ').');
+                }
+                $body = $response->getBody()->getContents();
+                $data = json_decode($body);
+                if (!is_object($data) || isset($data->error) || !isset($data->products) || !is_array($data->products)) {
+                    throw new RuntimeException('Home Depot search returned an invalid or unsuccessful response.');
+                }
+                return $body;
+            } catch (TransferException $ex) {
+                if ($attempt === 3) {
+                    // Never expose request URLs containing the API key.
+                    throw new RuntimeException('Unable to connect to Home Depot search. Please try again later.');
+                }
+                usleep(250000 * $attempt);
+            }
         }
-
     }
-
-
 
     function syncProductData($keyword = ''){
         $jsonContent = $this->getHomeDepotProducts($keyword);
@@ -130,7 +146,7 @@ class ProductService
 //
 //        $jsonContent = File::get($jsonFilePath);
         $jsonData = json_decode($jsonContent);
-        $engine = $jsonData->search_parameters->engine;
+        $engine = $jsonData->search_parameters->engine ?? 'home_depot';
         $products = $jsonData->products;
         foreach ($products as $product){
             $this->syncProduct($product,$engine);
@@ -145,8 +161,8 @@ class ProductService
         ],[
             "title" => $product->title,
             "brand" => $product->brand ?? '',
-            "thumbnail" => $product->thumbnails[0][0],
-            "model_number" => $product->model_number,
+            "thumbnail" => $product->thumbnails[0][0] ?? '',
+            "model_number" => $product->model_number ?? '',
             "engine" => $engine,
             "favorite" => $product->favorite ?? 0,
             "rating" => $product->rating ?? 0,

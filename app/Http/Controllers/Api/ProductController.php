@@ -27,7 +27,12 @@ class ProductController extends ResponseController
                 }
             }
         }
-        $data = $productService->getHomeDepotProducts(\request()->get('q'));
+        try {
+            $data = $productService->getHomeDepotProducts(\request()->get('q'));
+        } catch (\RuntimeException $ex) {
+            $this->response_data['message'] = $ex->getMessage();
+            return $this->sendJsonResponse(503);
+        }
         $this->response_data["status"] = true;
         $this->response_data["data"] = json_decode($data);
         return $this->sendJsonResponse();
@@ -94,7 +99,13 @@ class ProductController extends ResponseController
 
         if(count($products) == 0){
 
-            $productService->syncProductData($keyword);
+            try {
+                $productService->syncProductData($keyword);
+            } catch (\RuntimeException $ex) {
+                $this->response_data['status'] = false;
+                $this->response_data['message'] = $ex->getMessage();
+                return $this->sendJsonResponse(503);
+            }
             $products = $productService->searchProducts($keyword);
             $this->response_data["data"] = $products;
         }else{
